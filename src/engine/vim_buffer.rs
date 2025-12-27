@@ -1,3 +1,4 @@
+#[derive(Clone, Debug)]
 pub struct VimBuffer {
     pub lines: Vec<String>,
     pub cursor_row: usize,

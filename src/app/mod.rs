@@ -1,5 +1,6 @@
 mod app;
 pub mod ui;
+pub mod screens;
 
 use crate::utils::Result;
 pub use app::App;
