@@ -20,7 +20,7 @@ impl VimBuffer {
         }
         let line = &mut self.lines[self.cursor_row];
         line.insert(self.cursor_col, c);
-        self.cursor_col += 1;
+        // Don't move cursor here, let the caller handle it
     }
 
     pub fn move_cursor(&mut self, direction: MoveDirection) {
