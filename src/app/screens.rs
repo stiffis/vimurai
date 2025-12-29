@@ -106,6 +106,7 @@ pub struct PracticeState {
     pub is_correct: Option<bool>,
     pub exercise_number: usize,
     pub total_exercises: usize,
+    pub last_esc_time: Option<std::time::Instant>,
 }
 
 impl Default for PracticeState {
@@ -127,6 +128,7 @@ impl PracticeState {
             is_correct: None,
             exercise_number: 1,
             total_exercises: 10,
+            last_esc_time: None,
         }
     }
 
@@ -136,6 +138,7 @@ impl PracticeState {
         self.key_buffer.clear();
         self.is_correct = None;
         self.start_time = std::time::Instant::now();
+        self.last_esc_time = None;
     }
 
     pub fn elapsed_time(&self) -> std::time::Duration {

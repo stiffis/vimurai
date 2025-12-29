@@ -211,6 +211,21 @@ impl App {
     fn handle_normal_mode(&mut self, key: KeyEvent) -> Result<()> {
         // En modo Normal, todos los caracteres son comandos o movimientos
         match key.code {
+            // Double Esc to exit to menu
+            KeyCode::Esc => {
+                let now = std::time::Instant::now();
+                if let Some(last_esc) = self.practice_state.last_esc_time {
+                    // If less than 1 second since last Esc, exit to menu
+                    if now.duration_since(last_esc).as_millis() < 1000 {
+                        self.current_screen = Screen::MainMenu;
+                        self.practice_state.reset();
+                        return Ok(());
+                    }
+                }
+                // Record this Esc press
+                self.practice_state.last_esc_time = Some(now);
+            }
+
             // Modo Insert
             KeyCode::Char('i') => {
                 self.practice_state.vim_mode = VimMode::Insert;
@@ -703,7 +718,16 @@ impl App {
                 // Save (placeholder - in real app would save to file)
             }
             "q" | "quit" => {
-                self.should_quit = true;
+                // In practice mode, return to menu; otherwise quit app
+                if matches!(
+                    self.current_screen,
+                    Screen::DailyDrill | Screen::FreePractice | Screen::GuidedLearning
+                ) {
+                    self.current_screen = Screen::MainMenu;
+                    self.practice_state.reset();
+                } else {
+                    self.should_quit = true;
+                }
             }
             "wq" | "x" => {
                 // Save and quit

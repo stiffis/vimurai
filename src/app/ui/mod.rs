@@ -56,7 +56,7 @@ impl UI {
         let help_hints = match app.current_screen {
             Screen::MainMenu => vec![("↑↓/jk", "navigate"), ("Enter", "select"), ("q", "quit")],
             Screen::DailyDrill | Screen::FreePractice | Screen::GuidedLearning => {
-                vec![("Esc", "menu"), ("hjkl", "move"), ("i/a", "insert"), ("v", "visual")]
+                vec![("Esc Esc", "menu"), (":q", "menu"), ("hjkl", "move"), ("i/a", "insert"), ("v", "visual")]
             }
             Screen::Progress => vec![("Esc/q", "back")],
             Screen::Settings => vec![("↑↓/jk", "navigate"), ("Space", "toggle"), ("Esc/q", "back")],
