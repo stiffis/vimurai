@@ -63,6 +63,11 @@ impl UI {
             Screen::Help => vec![("Esc/q", "back")],
         };
         draw_help_bar(frame, &help_hints);
+
+        // Draw quit confirmation modal if showing
+        if app.show_quit_confirm {
+            draw_quit_confirm(frame);
+        }
     }
 
     fn render_main_menu(&self, frame: &mut Frame, app: &super::app::App, area: Rect) {
@@ -517,4 +522,55 @@ fn draw_help_bar(frame: &mut Frame, hints: &[(&str, &str)]) {
 
     let area = Rect::new(0, frame.size().height - 1, frame.size().width, 1);
     frame.render_widget(help_line, area);
+}
+
+fn draw_quit_confirm(frame: &mut Frame) {
+    // Create centered modal
+    let area = frame.size();
+    let modal_width = 50.min(area.width - 4);
+    let modal_height = 7;
+
+    let modal_x = (area.width.saturating_sub(modal_width)) / 2;
+    let modal_y = (area.height.saturating_sub(modal_height)) / 2;
+
+    let modal_area = Rect::new(modal_x, modal_y, modal_width, modal_height);
+
+    // Clear background with semi-transparent effect (using DarkGray)
+    let background = Block::default()
+        .style(Style::default().bg(Color::DarkGray));
+    frame.render_widget(background, modal_area);
+
+    // Draw the confirmation dialog
+    let content = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "Are you sure you want to quit?",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("[Y]", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(" Yes  ", Style::default().fg(Color::White)),
+            Span::styled("[N]", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+            Span::styled(" No  ", Style::default().fg(Color::White)),
+            Span::styled("[Esc]", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(" Cancel", Style::default().fg(Color::White)),
+        ]),
+    ];
+
+    let dialog = Paragraph::new(Text::from(content))
+        .block(
+            Block::default()
+                .title(" Confirm Quit ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Red))
+                .style(Style::default().bg(Color::Black)),
+        )
+        .alignment(Alignment::Center);
+
+    frame.render_widget(dialog, modal_area);
 }

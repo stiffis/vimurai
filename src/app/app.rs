@@ -23,6 +23,7 @@ pub struct App {
     pub practice_state: PracticeState,
     pub progress_state: ProgressState,
     pub settings_state: SettingsState,
+    pub show_quit_confirm: bool,
 }
 
 impl App {
@@ -34,6 +35,7 @@ impl App {
             practice_state: PracticeState::new(),
             progress_state: ProgressState::new(),
             settings_state: SettingsState::new(),
+            show_quit_confirm: false,
         })
     }
 
@@ -145,9 +147,24 @@ impl App {
     }
 
     fn handle_main_menu_key(&mut self, key: KeyEvent) -> Result<()> {
+        // If showing quit confirmation, handle Y/N
+        if self.show_quit_confirm {
+            match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') => {
+                    self.should_quit = true;
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    self.show_quit_confirm = false;
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+
+        // Normal menu handling
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => {
-                self.should_quit = true;
+                self.show_quit_confirm = true;
             }
             KeyCode::Char('j') | KeyCode::Down | KeyCode::Tab => {
                 self.main_menu_state.next();
@@ -181,7 +198,7 @@ impl App {
                         self.current_screen = Screen::Help;
                     }
                     "Quit" => {
-                        self.should_quit = true;
+                        self.show_quit_confirm = true;
                     }
                     _ => {}
                 }
