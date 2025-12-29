@@ -1,7 +1,8 @@
 use crossterm::{
-    cursor::SetCursorStyle,
+    cursor::{Hide, Show, SetCursorStyle},
     event::{self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent},
-    terminal::{disable_raw_mode, enable_raw_mode},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
 
@@ -37,12 +38,23 @@ impl App {
     }
 
     pub fn run(&mut self) -> Result<()> {
-        enable_raw_mode()?;
-        std::io::stdout().execute(EnableBracketedPaste)?;
+        // Setup panic handler to restore terminal on crash
+        let original_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |panic_info| {
+            let _ = disable_raw_mode();
+            let _ = execute!(std::io::stdout(), LeaveAlternateScreen, Show);
+            original_hook(panic_info);
+        }));
 
+        // Setup terminal: enter alternate screen and hide cursor
         let mut stdout = std::io::stdout();
+        execute!(stdout, EnterAlternateScreen, Hide)?;
+        enable_raw_mode()?;
+        stdout.execute(EnableBracketedPaste)?;
+
         let backend = CrosstermBackend::new(&mut stdout);
         let mut terminal = Terminal::new(backend)?;
+        terminal.clear()?;
 
         let ui = UI::new();
 
@@ -69,8 +81,14 @@ impl App {
             }
         }
 
-        // Restore cursor shape on exit
-        std::io::stdout().execute(SetCursorStyle::DefaultUserShape)?;
+        // Cleanup: restore terminal state
+        terminal.show_cursor()?;
+        execute!(
+            std::io::stdout(),
+            SetCursorStyle::DefaultUserShape,
+            Show,
+            LeaveAlternateScreen
+        )?;
         std::io::stdout().execute(DisableBracketedPaste)?;
         disable_raw_mode()?;
         Ok(())
