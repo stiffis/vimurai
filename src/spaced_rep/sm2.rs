@@ -180,7 +180,7 @@ mod tests {
         let updated = SM2Algorithm::calculate_next_review(item, Quality::Perfect, current_time);
 
         assert_eq!(updated.repetition, 1);
-        assert_eq!(updated.interval, 6.0);
+        assert_eq!(updated.interval, 1.0);
         assert!(updated.next_review > current_time);
     }
 
@@ -198,7 +198,7 @@ mod tests {
     #[test]
     fn test_is_due() {
         let item = SM2Item::default();
-        assert!(!SM2Algorithm::is_due(&item, 0));
+        assert!(SM2Algorithm::is_due(&item, 0));
 
         let future_item = SM2Item {
             next_review: 10000,

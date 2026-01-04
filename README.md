@@ -6,14 +6,13 @@ Vimurai es una aplicacion CLI interactiva para aprender Vim mediante practica mu
 
 ## Estado Actual del Proyecto
 
-### Compilacion
-Hay un error de compilacion en `src/app/app.rs:89`:
-- **Error**: Los brazos del match tienen tipos incompatibles
-- **Causa**: El brazo `_ => {}` retorna `()` pero los demas retornan `Result<(), Box<dyn Error>>`
-- **Solucion**: Cambiar `_ => {}` a `_ => Ok(())`
+El proyecto compila correctamente y los tests pasan.
 
-### Warnings
-- `unused import: VimBuffer` en linea 10 - importar solo `MoveDirection`
+### Bugs Corregidos
+- **Escape en modo practica**: Ahora solo limpia el buffer de comandos y asegura el modo Normal, sin salir al menú.
+- **Modo Visual**: Se verificó que no permite insertar caracteres inválidos.
+- **Compilacion**: Se corrigieron errores de tipos y warnings.
+- **Tests**: Se arreglaron los tests unitarios de SM-2 y se añadieron tests para `app.rs`.
 
 ## Estructura del Proyecto
 
@@ -122,9 +121,9 @@ anyhow = "1.0"        # Error handling
 
 ## Siguientes Tareas
 
-- [ ] Fix compilation error en app.rs:89
-- [ ] Remove unused VimBuffer import warning
-- [ ] Test Vim buffer mode switching
-- [ ] Test Visual mode (no typing allowed)
-- [ ] Test Escape key behavior
+- [x] Fix compilation error en app.rs:89
+- [x] Remove unused VimBuffer import warning
+- [x] Test Vim buffer mode switching
+- [x] Test Visual mode (no typing allowed)
+- [x] Test Escape key behavior
 - [ ] Verificar todos los comandos Vim implementados

@@ -1,6 +1,6 @@
 use crossterm::{
     cursor::{Hide, Show, SetCursorStyle},
-    event::{self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent},
+    event::{self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
@@ -9,7 +9,7 @@ use crossterm::{
 use ratatui::{prelude::CrosstermBackend, Terminal};
 
 use crate::engine::mode::VimMode;
-use crate::engine::vim_buffer::MoveDirection;
+use crate::engine::vim_buffer::{MoveDirection, Point};
 use crate::utils::Result;
 
 use super::screens::*;
@@ -244,258 +244,124 @@ impl App {
     }
 
     fn handle_normal_mode(&mut self, key: KeyEvent) -> Result<()> {
-        // En modo Normal, todos los caracteres son comandos o movimientos
+        // Check for pending operator/motion (like 'f' waiting for char)
+        let pending = self.practice_state.key_buffer.clone();
+        if !pending.is_empty() {
+             let first_char = pending.chars().next().unwrap();
+             if matches!(first_char, 'f' | 'F' | 't' | 'T') && pending.len() == 1 {
+                 if let KeyCode::Char(target) = key.code {
+                     let forward = matches!(first_char, 'f' | 't');
+                     let inclusive = matches!(first_char, 'f' | 'F');
+                     self.practice_state.vim_buffer.find_char_in_line(target, forward, inclusive);
+                     self.practice_state.key_buffer.clear();
+                     return Ok(());
+                 } else if key.code == KeyCode::Esc {
+                     self.practice_state.key_buffer.clear();
+                     return Ok(());
+                 }
+             }
+        }
+
         match key.code {
-            // Double Esc to exit to menu
             KeyCode::Esc => {
-                let now = std::time::Instant::now();
-                if let Some(last_esc) = self.practice_state.last_esc_time {
-                    // If less than 1 second since last Esc, exit to menu
-                    if now.duration_since(last_esc).as_millis() < 1000 {
-                        self.current_screen = Screen::MainMenu;
-                        self.practice_state.reset();
-                        return Ok(());
-                    }
-                }
-                // Record this Esc press
-                self.practice_state.last_esc_time = Some(now);
+                self.practice_state.key_buffer.clear();
             }
 
-            // Modo Insert
+            // Undo / Redo
+            KeyCode::Char('u') => {
+                self.practice_state.vim_buffer.undo();
+            }
+            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.practice_state.vim_buffer.redo();
+            }
+
+            // Insert Modes
             KeyCode::Char('i') => {
                 self.practice_state.vim_mode = VimMode::Insert;
             }
             KeyCode::Char('a') => {
-                // Append: mover cursor una posición a la derecha si es posible
-                let line_len = self.practice_state.vim_buffer.lines[self.practice_state.vim_buffer.cursor_row].len();
-                if self.practice_state.vim_buffer.cursor_col < line_len {
-                    self.practice_state.vim_buffer.cursor_col += 1;
-                }
+                self.practice_state.vim_buffer.move_cursor(MoveDirection::Right);
                 self.practice_state.vim_mode = VimMode::Insert;
             }
             KeyCode::Char('I') => {
-                // Insert at line start
-                self.practice_state.vim_buffer.cursor_col = 0;
+                self.practice_state.vim_buffer.move_to_non_blank_start();
                 self.practice_state.vim_mode = VimMode::Insert;
             }
             KeyCode::Char('A') => {
-                // Append at line end
-                let line_len = self.practice_state.vim_buffer.lines[self.practice_state.vim_buffer.cursor_row].len();
-                self.practice_state.vim_buffer.cursor_col = line_len;
+                self.practice_state.vim_buffer.move_to_line_end();
+                // Move one past end is handled by insert mode logic usually, 
+                // but let's ensure we are at end.
+                // Vim 'A' is append at EOL. In our buffer, col = len is allowed for insert.
+                let row = self.practice_state.vim_buffer.cursor_row;
+                self.practice_state.vim_buffer.cursor_col = self.practice_state.vim_buffer.line_len(row);
                 self.practice_state.vim_mode = VimMode::Insert;
             }
-
-            // New lines
             KeyCode::Char('o') => {
-                // New line below
-                let _current_line = self.practice_state.vim_buffer.lines[self.practice_state.vim_buffer.cursor_row].clone();
-                self.practice_state.vim_buffer.lines.insert(self.practice_state.vim_buffer.cursor_row + 1, String::new());
+                self.practice_state.vim_buffer.save_history();
+                let row = self.practice_state.vim_buffer.cursor_row;
+                self.practice_state.vim_buffer.lines.insert(row + 1, String::new());
                 self.practice_state.vim_buffer.cursor_row += 1;
                 self.practice_state.vim_buffer.cursor_col = 0;
                 self.practice_state.vim_mode = VimMode::Insert;
             }
             KeyCode::Char('O') => {
-                // New line above
+                self.practice_state.vim_buffer.save_history();
                 let row = self.practice_state.vim_buffer.cursor_row;
                 self.practice_state.vim_buffer.lines.insert(row, String::new());
                 self.practice_state.vim_buffer.cursor_col = 0;
                 self.practice_state.vim_mode = VimMode::Insert;
             }
 
-            // Visual mode
+            // Visual & Command
             KeyCode::Char('v') => {
                 self.practice_state.vim_mode = VimMode::Visual;
+                let pt = (self.practice_state.vim_buffer.cursor_row, self.practice_state.vim_buffer.cursor_col);
+                self.practice_state.vim_buffer.selection_start = Some(pt);
             }
-
-            // Command mode
             KeyCode::Char(':') => {
                 self.practice_state.vim_mode = VimMode::Command;
             }
 
-            // Movement - basic
-            KeyCode::Char('h') => {
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Left);
-            }
-            KeyCode::Char('j') => {
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Down);
-            }
-            KeyCode::Char('k') => {
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Up);
-            }
-            KeyCode::Char('l') => {
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Right);
-            }
-
-            // Movement - word
-            KeyCode::Char('w') => {
-                for _ in 0.. {
-                    self.practice_state.vim_buffer.move_cursor(MoveDirection::Right);
-                    let line = &self.practice_state.vim_buffer.lines[self.practice_state.vim_buffer.cursor_row];
-                    if self.practice_state.vim_buffer.cursor_col >= line.len() {
-                        break;
-                    }
-                    if !line.chars().nth(self.practice_state.vim_buffer.cursor_col).unwrap_or(' ').is_whitespace() {
-                        while self.practice_state.vim_buffer.cursor_col < line.len() {
-                            let c = line.chars().nth(self.practice_state.vim_buffer.cursor_col).unwrap_or(' ');
-                            if c.is_whitespace() {
-                                break;
-                            }
-                            if self.practice_state.vim_buffer.cursor_col + 1 >= line.len() {
-                                break;
-                            }
-                            self.practice_state.vim_buffer.cursor_col += 1;
-                        }
-                        break;
-                    }
-                }
-            }
-            KeyCode::Char('b') => {
-                // Move backward word
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Left);
-                while self.practice_state.vim_buffer.cursor_col > 0 {
-                    let line = &self.practice_state.vim_buffer.lines[self.practice_state.vim_buffer.cursor_row];
-                    let c = line.chars().nth(self.practice_state.vim_buffer.cursor_col - 1).unwrap_or(' ');
-                    if !c.is_whitespace() {
-                        break;
-                    }
-                    self.practice_state.vim_buffer.cursor_col -= 1;
-                }
-                while self.practice_state.vim_buffer.cursor_col > 0 {
-                    let line = &self.practice_state.vim_buffer.lines[self.practice_state.vim_buffer.cursor_row];
-                    let c = line.chars().nth(self.practice_state.vim_buffer.cursor_col - 1).unwrap_or(' ');
-                    if c.is_whitespace() {
-                        break;
-                    }
-                    self.practice_state.vim_buffer.cursor_col -= 1;
+            // Navigation
+            KeyCode::Char('h') | KeyCode::Left => self.practice_state.vim_buffer.move_cursor(MoveDirection::Left),
+            KeyCode::Char('j') | KeyCode::Down => self.practice_state.vim_buffer.move_cursor(MoveDirection::Down),
+            KeyCode::Char('k') | KeyCode::Up => self.practice_state.vim_buffer.move_cursor(MoveDirection::Up),
+            KeyCode::Char('l') | KeyCode::Right => self.practice_state.vim_buffer.move_cursor(MoveDirection::Right),
+            
+            KeyCode::Char('w') => self.practice_state.vim_buffer.move_word_forward(),
+            KeyCode::Char('b') => self.practice_state.vim_buffer.move_word_backward(),
+            KeyCode::Char('e') => self.practice_state.vim_buffer.move_word_end(),
+            KeyCode::Char('0') => self.practice_state.vim_buffer.move_to_line_start(),
+            KeyCode::Char('$') => self.practice_state.vim_buffer.move_to_line_end(),
+            KeyCode::Char('^') => self.practice_state.vim_buffer.move_to_non_blank_start(),
+            
+            // Find char (start pending state)
+            KeyCode::Char('f') | KeyCode::Char('F') | KeyCode::Char('t') | KeyCode::Char('T') => {
+                if let KeyCode::Char(c) = key.code {
+                    self.practice_state.key_buffer.push(c);
                 }
             }
 
-            // Movement - line
-            KeyCode::Char('0') => {
-                self.practice_state.vim_buffer.cursor_col = 0;
-            }
-            KeyCode::Char('$') => {
-                let line_len = self.practice_state.vim_buffer.lines[self.practice_state.vim_buffer.cursor_row].len();
-                self.practice_state.vim_buffer.cursor_col = line_len.saturating_sub(1).max(0);
-            }
-
-            // Movement - file
-            KeyCode::Char('g') => {
-                // gg - file start (needs another g)
-                // We'll implement as part of command buffer
-                self.practice_state.key_buffer = "g".to_string();
-            }
-            KeyCode::Char('G') => {
-                // File end
-                self.practice_state.vim_buffer.cursor_row = self.practice_state.vim_buffer.lines.len().saturating_sub(1);
-                let line_len = self.practice_state.vim_buffer.lines[self.practice_state.vim_buffer.cursor_row].len();
-                self.practice_state.vim_buffer.cursor_col = line_len.saturating_sub(1).max(0);
-            }
-
-            // Edit commands
+            // Editing
             KeyCode::Char('x') => {
-                // Delete character under cursor
+                self.practice_state.vim_buffer.save_history();
                 let row = self.practice_state.vim_buffer.cursor_row;
                 let col = self.practice_state.vim_buffer.cursor_col;
-                let line = &mut self.practice_state.vim_buffer.lines[row];
-                if col < line.len() {
-                    line.remove(col);
+                if col < self.practice_state.vim_buffer.line_len(row) {
+                    self.practice_state.vim_buffer.lines[row].remove(col);
                 }
             }
-            KeyCode::Char('X') => {
-                // Delete character before cursor
-                let row = self.practice_state.vim_buffer.cursor_row;
-                if self.practice_state.vim_buffer.cursor_col > 0 {
-                    self.practice_state.vim_buffer.cursor_col -= 1;
-                    let line = &mut self.practice_state.vim_buffer.lines[row];
-                    line.remove(self.practice_state.vim_buffer.cursor_col);
+            
+            // Pending commands (d, y, c, g)
+            KeyCode::Char('d') | KeyCode::Char('y') | KeyCode::Char('c') | KeyCode::Char('g') => {
+                 if let KeyCode::Char(c) = key.code {
+                    self.practice_state.key_buffer.push(c);
                 }
-            }
-            KeyCode::Char('d') => {
-                // dd - delete line (need another d)
-                self.practice_state.key_buffer = "d".to_string();
-            }
-            KeyCode::Char('D') => {
-                // Delete to end of line
-                let row = self.practice_state.vim_buffer.cursor_row;
-                let col = self.practice_state.vim_buffer.cursor_col;
-                let line = &mut self.practice_state.vim_buffer.lines[row];
-                let (_, after) = line.split_at(col);
-                *line = after.to_string();
-            }
-            KeyCode::Char('y') => {
-                // yy - yank line
-                self.practice_state.key_buffer = "y".to_string();
-            }
-            KeyCode::Char('Y') => {
-                // Yank to end of line
-                let row = self.practice_state.vim_buffer.cursor_row;
-                let col = self.practice_state.vim_buffer.cursor_col;
-                let line = &self.practice_state.vim_buffer.lines[row];
-                let (_, after) = line.split_at(col);
-                // Store in register (simplified)
-                self.practice_state.key_buffer = format!("yanked:{}", after);
-            }
-            KeyCode::Char('p') => {
-                // Paste after
-                let row = self.practice_state.vim_buffer.cursor_row;
-                let yanked = &self.practice_state.key_buffer;
-                if yanked.starts_with("yanked:") {
-                    let text = yanked.strip_prefix("yanked:").unwrap_or("");
-                    if !text.is_empty() {
-                        self.practice_state.vim_buffer.lines[row].push_str(text);
-                        self.practice_state.vim_buffer.cursor_col = self.practice_state.vim_buffer.lines[row].len().saturating_sub(1);
-                    }
-                } else if !yanked.is_empty() && yanked != "d" && yanked != "y" {
-                    self.practice_state.vim_buffer.lines[row].push_str(yanked);
-                }
-            }
-            KeyCode::Char('P') => {
-                // Paste before
-                let row = self.practice_state.vim_buffer.cursor_row;
-                let yanked = &self.practice_state.key_buffer;
-                if yanked.starts_with("yanked:") {
-                    let text = yanked.strip_prefix("yanked:").unwrap_or("");
-                    if !text.is_empty() {
-                        let current = self.practice_state.vim_buffer.lines[row].clone();
-                        let col = self.practice_state.vim_buffer.cursor_col;
-                        let (before, after) = current.split_at(col);
-                        self.practice_state.vim_buffer.lines[row] = format!("{}{}{}", before, text, after);
-                        self.practice_state.vim_buffer.cursor_col = col + text.len();
-                    }
-                }
-            }
-            KeyCode::Char('u') => {
-                // Undo (placeholder - would need full undo system)
-                self.practice_state.key_buffer.clear();
-            }
-            KeyCode::Char('c') => {
-                // Change
-                self.practice_state.key_buffer = "c".to_string();
-            }
-            KeyCode::Char('r') => {
-                // Replace character
-                self.practice_state.key_buffer = "r".to_string();
-            }
-
-            // Arrow keys (also work in normal mode)
-            KeyCode::Up => {
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Up);
-            }
-            KeyCode::Down => {
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Down);
-            }
-            KeyCode::Left => {
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Left);
-            }
-            KeyCode::Right => {
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Right);
             }
 
             _ => {}
         }
 
-        // Handle command completion (dd, yy, etc.)
         self.handle_command_completion();
         Ok(())
     }
@@ -564,102 +430,59 @@ impl App {
     fn handle_visual_mode(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             // Exit visual mode
-            KeyCode::Esc => {
-                self.practice_state.vim_mode = VimMode::Normal;
-            }
-            KeyCode::Char('v') => {
-                // Exit visual mode
+            KeyCode::Esc | KeyCode::Char('v') => {
+                self.practice_state.vim_buffer.selection_start = None;
                 self.practice_state.vim_mode = VimMode::Normal;
             }
 
             // Movement (extends selection)
-            KeyCode::Char('h') => {
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Left);
-            }
-            KeyCode::Char('j') => {
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Down);
-            }
-            KeyCode::Char('k') => {
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Up);
-            }
-            KeyCode::Char('l') => {
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Right);
-            }
-            KeyCode::Char('w') => {
-                // Word forward
-                for _ in 0..5 {
-                    self.practice_state.vim_buffer.move_cursor(MoveDirection::Right);
-                }
-            }
-            KeyCode::Char('b') => {
-                for _ in 0..5 {
-                    self.practice_state.vim_buffer.move_cursor(MoveDirection::Left);
-                }
-            }
-            KeyCode::Char('0') => {
-                self.practice_state.vim_buffer.cursor_col = 0;
-            }
-            KeyCode::Char('$') => {
-                let line_len = self.practice_state.vim_buffer.lines[self.practice_state.vim_buffer.cursor_row].len();
-                self.practice_state.vim_buffer.cursor_col = line_len.saturating_sub(1).max(0);
-            }
+            KeyCode::Char('h') | KeyCode::Left => self.practice_state.vim_buffer.move_cursor(MoveDirection::Left),
+            KeyCode::Char('j') | KeyCode::Down => self.practice_state.vim_buffer.move_cursor(MoveDirection::Down),
+            KeyCode::Char('k') | KeyCode::Up => self.practice_state.vim_buffer.move_cursor(MoveDirection::Up),
+            KeyCode::Char('l') | KeyCode::Right => self.practice_state.vim_buffer.move_cursor(MoveDirection::Right),
+            
+            KeyCode::Char('w') => self.practice_state.vim_buffer.move_word_forward(),
+            KeyCode::Char('b') => self.practice_state.vim_buffer.move_word_backward(),
+            KeyCode::Char('e') => self.practice_state.vim_buffer.move_word_end(),
+            KeyCode::Char('0') => self.practice_state.vim_buffer.move_to_line_start(),
+            KeyCode::Char('$') => self.practice_state.vim_buffer.move_to_line_end(),
+            KeyCode::Char('^') => self.practice_state.vim_buffer.move_to_non_blank_start(),
 
             // Visual edit commands
-            KeyCode::Char('d') => {
-                // Delete selection (simplified: delete to end of line)
-                let row = self.practice_state.vim_buffer.cursor_row;
-                let col = self.practice_state.vim_buffer.cursor_col;
-                let line = &mut self.practice_state.vim_buffer.lines[row];
-                let (_, after) = line.split_at(col);
-                *line = after.to_string();
+            KeyCode::Char('d') | KeyCode::Char('x') => {
+                if let Some(start) = self.practice_state.vim_buffer.selection_start {
+                    let end = (self.practice_state.vim_buffer.cursor_row, self.practice_state.vim_buffer.cursor_col);
+                    self.practice_state.vim_buffer.delete_range(
+                        Point { row: start.0, col: start.1 },
+                        Point { row: end.0, col: end.1 }
+                    );
+                }
+                self.practice_state.vim_buffer.selection_start = None;
                 self.practice_state.vim_mode = VimMode::Normal;
             }
             KeyCode::Char('y') => {
                 // Yank selection (simplified)
-                let row = self.practice_state.vim_buffer.cursor_row;
-                let col = self.practice_state.vim_buffer.cursor_col;
-                let line = &self.practice_state.vim_buffer.lines[row];
-                let (_, after) = line.split_at(col);
-                self.practice_state.key_buffer = format!("yanked:{}", after);
-                self.practice_state.vim_mode = VimMode::Normal;
-            }
-            KeyCode::Char('x') => {
-                // Delete selection
-                let row = self.practice_state.vim_buffer.cursor_row;
-                let col = self.practice_state.vim_buffer.cursor_col;
-                let line = &mut self.practice_state.vim_buffer.lines[row];
-                if col < line.len() {
-                    line.remove(col);
+                if let Some(start) = self.practice_state.vim_buffer.selection_start {
+                    let end = (self.practice_state.vim_buffer.cursor_row, self.practice_state.vim_buffer.cursor_col);
+                     let text = self.practice_state.vim_buffer.get_range_text(
+                        Point { row: start.0, col: start.1 },
+                        Point { row: end.0, col: end.1 }
+                    );
+                    self.practice_state.key_buffer = format!("yanked:{}", text);
                 }
+                self.practice_state.vim_buffer.selection_start = None;
                 self.practice_state.vim_mode = VimMode::Normal;
             }
             KeyCode::Char('c') => {
-                // Change selection (delete and enter insert)
-                let row = self.practice_state.vim_buffer.cursor_row;
-                let col = self.practice_state.vim_buffer.cursor_col;
-                let line = &mut self.practice_state.vim_buffer.lines[row];
-                if col < line.len() {
-                    line.remove(col);
+                if let Some(start) = self.practice_state.vim_buffer.selection_start {
+                    let end = (self.practice_state.vim_buffer.cursor_row, self.practice_state.vim_buffer.cursor_col);
+                    self.practice_state.vim_buffer.delete_range(
+                        Point { row: start.0, col: start.1 },
+                        Point { row: end.0, col: end.1 }
+                    );
                 }
+                self.practice_state.vim_buffer.selection_start = None;
                 self.practice_state.vim_mode = VimMode::Insert;
-            }
-            KeyCode::Char('r') => {
-                // Replace all selected (placeholder)
-                self.practice_state.vim_mode = VimMode::Normal;
-            }
-
-            // Arrow keys
-            KeyCode::Up => {
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Up);
-            }
-            KeyCode::Down => {
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Down);
-            }
-            KeyCode::Left => {
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Left);
-            }
-            KeyCode::Right => {
-                self.practice_state.vim_buffer.move_cursor(MoveDirection::Right);
             }
 
             _ => {}
@@ -866,5 +689,51 @@ impl App {
 
     pub fn quit(&mut self) {
         self.should_quit = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyModifiers, KeyEventKind, KeyEventState};
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    #[test]
+    fn test_escape_normal_mode() {
+        let mut app = App::new().unwrap();
+        app.current_screen = Screen::DailyDrill; // Practice mode
+        app.practice_state.vim_mode = VimMode::Normal;
+        
+        // Press Esc
+        app.handle_key(key(KeyCode::Esc)).unwrap();
+        
+        // Should still be in Practice mode (DailyDrill)
+        assert_eq!(app.current_screen, Screen::DailyDrill);
+        // Should be in Normal mode
+        assert_eq!(app.practice_state.vim_mode, VimMode::Normal);
+    }
+
+    #[test]
+    fn test_visual_mode_no_typing() {
+        let mut app = App::new().unwrap();
+        app.current_screen = Screen::DailyDrill;
+        app.practice_state.vim_mode = VimMode::Visual;
+        app.practice_state.vim_buffer.lines = vec!["Hello".to_string()];
+        
+        // Press 'a' (invalid in Visual)
+        app.handle_key(key(KeyCode::Char('a'))).unwrap();
+        
+        // Buffer should be unchanged
+        assert_eq!(app.practice_state.vim_buffer.lines[0], "Hello");
+        // Should still be in Visual mode
+        assert_eq!(app.practice_state.vim_mode, VimMode::Visual);
     }
 }
