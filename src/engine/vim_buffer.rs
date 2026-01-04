@@ -366,7 +366,7 @@ impl VimBuffer {
         let mut row = self.cursor_row;
         let mut col = self.cursor_col;
 
-        let mut step_back = |r: &mut usize, c: &mut usize| -> bool {
+        let step_back = |r: &mut usize, c: &mut usize| -> bool {
             if *c > 0 { *c -= 1; true } 
             else if *r > 0 { *r -= 1; *c = self.line_len(*r).saturating_sub(1); true } 
             else { false }
@@ -420,7 +420,6 @@ impl VimBuffer {
     }
     
     pub fn find_char_in_line(&mut self, target: char, forward: bool, inclusive: bool) -> bool {
-        let row = self.cursor_row;
         let start_col = self.cursor_col;
         let line = self.current_line();
         if forward {
