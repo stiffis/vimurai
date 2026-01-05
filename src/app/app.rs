@@ -197,6 +197,7 @@ impl App {
                         self.practice_state.reset();
                     }
                     "Progress" => {
+                        self.refresh_progress_ui();
                         self.current_screen = Screen::Progress;
                     }
                     "Settings" => {
@@ -226,6 +227,7 @@ impl App {
                 self.practice_state.reset();
             }
             KeyCode::Char('p') => {
+                self.refresh_progress_ui();
                 self.current_screen = Screen::Progress;
             }
             KeyCode::Char('s') => {
@@ -262,6 +264,7 @@ impl App {
                     if let Some(pos) = all.iter().position(|e| e.id == current.id) {
                         if pos + 1 < all.len() {
                             self.load_exercise(all[pos + 1].clone());
+                            self.practice_state.exercise_number += 1;
                             return Ok(());
                         } else {
                             self.practice_state.current_instruction = "ALL LEVELS COMPLETED!".to_string();
@@ -781,7 +784,19 @@ impl App {
                 // Record result in DB
                 let id = exercise.id.clone();
                 self.record_exercise_result(id, Quality::Perfect);
+                self.refresh_progress_ui();
             }
+        }
+    }
+
+    fn refresh_progress_ui(&mut self) {
+        if let Ok(stats) = self.progress_db.get_stats() {
+            self.progress_state.level = stats.level;
+            self.progress_state.xp = stats.xp;
+            self.progress_state.commands_mastered = stats.commands_mastered;
+            self.progress_state.commands_learning = stats.commands_learning;
+            self.progress_state.streak_days = stats.streak_days;
+            self.progress_state.total_sessions = stats.total_sessions;
         }
     }
 
