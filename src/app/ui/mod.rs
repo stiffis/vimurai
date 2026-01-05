@@ -42,8 +42,8 @@ impl UI {
         let status_message = match app.current_screen {
             Screen::MainMenu => "Main Menu".to_string(),
             Screen::DailyDrill => format!(
-                "Daily Drill | {} | {}",
-                app.practice_state.exercise_number, app.practice_state.total_exercises
+                "Daily Drill | Level: {:?}",
+                app.practice_state.current_exercise.as_ref().map(|e| &e.title).unwrap_or(&"None".to_string())
             ),
             Screen::FreePractice => "Free Practice Mode".to_string(),
             Screen::GuidedLearning => "Guided Learning".to_string(),
@@ -51,12 +51,12 @@ impl UI {
             Screen::Settings => "Settings".to_string(),
             Screen::Help => "Help & Shortcuts".to_string(),
         };
-        draw_status_bar(frame, app.practice_state.vim_mode, &status_message);
+        draw_status_bar(frame, app, &status_message);
 
         let help_hints = match app.current_screen {
             Screen::MainMenu => vec![("↑↓/jk", "navigate"), ("Enter", "select"), ("q", "quit")],
             Screen::DailyDrill | Screen::FreePractice | Screen::GuidedLearning => {
-                vec![("Esc Esc", "menu"), (":q", "menu"), ("hjkl", "move"), ("i/a", "insert"), ("v", "visual")]
+                vec![("Esc", "normal"), (":", "command"), ("i/a", "insert"), ("v", "visual")]
             }
             Screen::Progress => vec![("Esc/q", "back")],
             Screen::Settings => vec![("↑↓/jk", "navigate"), ("Space", "toggle"), ("Esc/q", "back")],
@@ -67,6 +67,11 @@ impl UI {
         // Draw quit confirmation modal if showing
         if app.show_quit_confirm {
             draw_quit_confirm(frame);
+        }
+        
+        // Draw success overlay if correct
+        if app.practice_state.is_correct == Some(true) {
+            draw_success_overlay(frame);
         }
     }
 
@@ -200,6 +205,10 @@ impl UI {
             frame.render_widget(hint, Rect::new(chunks[0].x + 1, chunks[0].y + 2, chunks[0].width - 2, 1));
         }
 
+        // Calculate gutter width
+        let line_count = app.practice_state.vim_buffer.lines.len();
+        let gutter_width = line_count.to_string().len();
+
         let buffer_content: Vec<Line> = app
             .practice_state
             .vim_buffer
@@ -207,27 +216,42 @@ impl UI {
             .iter()
             .enumerate()
             .map(|(i, line)| {
-                let cursor = if i == app.practice_state.vim_buffer.cursor_row {
+                // Line Number Style
+                let is_current = i == app.practice_state.vim_buffer.cursor_row;
+                let num_style = if is_current {
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::DarkGray)
+                };
+                
+                let line_num = format!("{:>width$} │ ", i + 1, width = gutter_width);
+                let num_span = Span::styled(line_num, num_style);
+
+                // Line Content
+                let content_spans = if is_current {
                     let col = app.practice_state.vim_buffer.cursor_col;
                     if col < line.len() {
                         let at = line.chars().nth(col).unwrap_or(' ');
                         let before = &line[..col];
                         let after = &line[col + 1..];
-                        Line::from(vec![
+                        vec![
+                            num_span,
                             Span::raw(before),
                             Span::styled(at.to_string(), Style::default().bg(Color::Yellow).fg(Color::Black)),
                             Span::raw(after),
-                        ])
+                        ]
                     } else {
-                        Line::from(vec![
+                        vec![
+                            num_span,
                             Span::raw(line),
                             Span::styled(" ", Style::default().bg(Color::Yellow)),
-                        ])
+                        ]
                     }
                 } else {
-                    Line::from(line.as_str())
+                    vec![num_span, Span::raw(line)]
                 };
-                cursor
+                
+                Line::from(content_spans)
             })
             .collect();
 
@@ -479,25 +503,61 @@ fn draw_title_bar(frame: &mut Frame, area: Rect) {
     frame.render_widget(title, area);
 }
 
-fn draw_status_bar(frame: &mut Frame, mode: VimMode, message: &str) {
-    let status_text = match mode {
-        VimMode::Normal => format!("-- NORMAL -- | {}", message),
-        VimMode::Insert => format!("-- INSERT -- | {}", message),
-        VimMode::Visual => format!("-- VISUAL -- | {}", message),
-        VimMode::Command => format!(":{} | {}", message, message),
+fn draw_status_bar(frame: &mut Frame, app: &super::app::App, message: &str) {
+    let mode = app.practice_state.vim_mode;
+    let mode_color = match mode {
+        VimMode::Normal => Color::Green,
+        VimMode::Insert => Color::Blue,
+        VimMode::Visual => Color::Yellow,
+        VimMode::Command => Color::Magenta,
     };
 
-    let bar = Paragraph::new(status_text)
-        .style(
-            Style::default()
-                .fg(Color::White)
-                .bg(Color::Black)
-                .add_modifier(Modifier::BOLD),
-        )
-        .block(Block::default().borders(Borders::TOP));
+    let mode_text = format!(" {:?} ", mode).to_uppercase();
+    
+    // Command buffer or status message
+    let center_text = if mode == VimMode::Command {
+        format!(":{}", app.practice_state.key_buffer)
+    } else if !app.practice_state.key_buffer.is_empty() {
+        format!("{} (pending: {})", message, app.practice_state.key_buffer)
+    } else {
+        message.to_string()
+    };
 
-    let area = Rect::new(0, frame.size().height - 2, frame.size().width, 2);
-    frame.render_widget(bar, area);
+    let cursor_text = format!(
+        " Ln {}, Col {} ",
+        app.practice_state.vim_buffer.cursor_row + 1,
+        app.practice_state.vim_buffer.cursor_col + 1
+    );
+
+    let layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(mode_text.len() as u16),
+            Constraint::Min(10),
+            Constraint::Length(cursor_text.len() as u16),
+        ])
+        .split(Rect::new(0, frame.size().height - 2, frame.size().width, 1));
+
+    // Mode block
+    frame.render_widget(
+        Paragraph::new(mode_text)
+            .style(Style::default().bg(mode_color).fg(Color::Black).add_modifier(Modifier::BOLD)),
+        layout[0],
+    );
+
+    // Center message
+    frame.render_widget(
+        Paragraph::new(center_text)
+            .style(Style::default().bg(Color::DarkGray).fg(Color::White)),
+        layout[1],
+    );
+
+    // Cursor position
+    frame.render_widget(
+        Paragraph::new(cursor_text)
+            .style(Style::default().bg(mode_color).fg(Color::Black)),
+        layout[2],
+    );
 }
 
 fn draw_help_bar(frame: &mut Frame, hints: &[(&str, &str)]) {
@@ -573,4 +633,32 @@ fn draw_quit_confirm(frame: &mut Frame) {
         .alignment(Alignment::Center);
 
     frame.render_widget(dialog, modal_area);
+}
+
+fn draw_success_overlay(frame: &mut Frame) {
+    let area = frame.size();
+    let modal_width = 40;
+    let modal_height = 5;
+    
+    let x = (area.width.saturating_sub(modal_width)) / 2;
+    let y = (area.height.saturating_sub(modal_height)) / 2;
+    let rect = Rect::new(x, y, modal_width, modal_height);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Green).fg(Color::Black));
+    
+    let text = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("SUCCESS!", Style::default().add_modifier(Modifier::BOLD))
+        ]),
+        Line::from("Press Enter to continue"),
+    ];
+    
+    let p = Paragraph::new(text)
+        .block(block)
+        .alignment(Alignment::Center);
+        
+    frame.render_widget(p, rect);
 }
