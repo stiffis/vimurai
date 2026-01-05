@@ -1,129 +1,97 @@
-# Vimurai - Vim Learning Application
+# Vimurai ⚔️
 
-## Project Overview
+> **Master Vim through muscle memory.**
+> An interactive CLI dojo that combines gamification with spaced repetition to forge your editing skills.
 
-Vimurai es una aplicacion CLI interactiva para aprender Vim mediante practica muscular. Esta escrita en Rust y usa ratatui para la interfaz grafica de terminal.
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-blue)
+![Version](https://img.shields.io/badge/version-0.1.0-orange)
+![Rust](https://img.shields.io/badge/made%20with-Rust-red)
 
-## Estado Actual del Proyecto
+<p align="center">
+  <img src="assets/logo.png" alt="Vimurai Logo" width="200"/>
+  <br>
+  <em>(Logo Placeholder - Add your logo here)</em>
+</p>
 
-El proyecto compila correctamente y los tests pasan.
+## 📸 Screenshots
 
-### Bugs Corregidos
-- **Escape en modo practica**: Ahora solo limpia el buffer de comandos y asegura el modo Normal, sin salir al menú.
-- **Modo Visual**: Se verificó que no permite insertar caracteres inválidos.
-- **Compilacion**: Se corrigieron errores de tipos y warnings.
-- **Tests**: Se arreglaron los tests unitarios de SM-2 y se añadieron tests para `app.rs`.
+<p align="center">
+  <img src="assets/p1.png" alt="Main Menu" width="45%">
+  <img src="assets/p2.png" alt="Daily Drill" width="45%">
+  <img src="assets/p3.png" alt="Daily Drill" width="45%">
+</p>
 
-## Estructura del Proyecto
+## ✨ Features
 
-```
-vimurai/
-├── Cargo.toml              # Dependencias (ratatui, crossterm, rusqlite, etc.)
-├── src/
-│   ├── main.rs             # Entry point
-│   ├── lib.rs              # Library root
-│   ├── app/
-│   │   ├── mod.rs          # App module, run() function
-│   │   ├── app.rs          # Main application logic (PRINCIPAL - tiene bugs)
-│   │   ├── screens.rs      # Screen states (Screen, PracticeState, etc.)
-│   │   └── ui/mod.rs       # TUI rendering con ratatui
-│   ├── engine/
-│   │   ├── mod.rs          # Engine module
-│   │   ├── mode.rs         # VimMode enum (Normal, Insert, Visual, Command)
-│   │   └── vim_buffer.rs   # VimBuffer struct (lines, cursor_row, cursor_col)
-│   ├── commands/
-│   │   └── command_db.rs   # Base de datos de 25 comandos Vim
-│   ├── spaced_rep/
-│   │   └── sm2.rs          # Algoritmo SM-2 spaced repetition
-│   └── database/
-│       └── user_progress.rs # Persistencia SQLite
-└── vim-trainer-features.md  # Especificacion de features
-```
+- **🧠 Smart Learning Engine:** Uses the **SM-2 Spaced Repetition** algorithm to schedule reviews based on your performance.
+- **🗺️ Guided Curriculum:** A structured path from "Survivor" (Basics) to "Wizard" (Macros), organized by Belts.
+- **🎮 Gamified Progression:** Earn XP, level up, and maintain your daily streak.
+- **⚡ Real Vim Engine:** Supports operators (`d`, `c`, `y`), motions (`w`, `f`, `t`), and visual mode.
+- **🖥️ Professional TUI:** Built with `ratatui` for a beautiful, responsive terminal interface.
 
-## Bugs Conocidos en app.rs
+## 🚀 Installation
 
-1. **Escape en modo practica sale al menu**: El Escape deberia cambiar al modo Normal, no salir de la pantalla de practica
-2. **Modo Visual permite escribir**: En modo Visual, solo deberian funcionar movimientos y comandos (v, d, y, etc.), no insertar caracteres
-3. **Compilacion**: Error en line 89 con tipos de match
-4. **Buscar mas bugs**
-## Comandos Vim Implementados
+### Prerequisites
 
-### Modo Normal
-- `i` - Insert mode
-- `a` - Append (cursor +1)
-- `I` - Insert at line start
-- `A` - Insert at line end (CORRECCION: cursor al final de la linea)
-- `o` - New line below
-- `O` - New line above
-- `v` - Visual mode
-- `:` - Command mode
-- `h/j/k/l` - Movimiento
-- `w/b` - Palabra adelante/atras
-- `0/$` - Inicio/fin de linea
-- `gg/G` - Inicio/fin del archivo
-- `x` - Delete character
-- `dd` - Delete line (2-char command)
-- `yy` - Yank line (2-char command)
-- `p/P` - Paste after/before
-- `u` - Undo
+- [Rust](https://www.rust-lang.org/tools/install) (1.70+)
 
-### Modo Insert
-- `Esc` - Salir a modo Normal
-- Caracteres - Insertar texto
-- `Backspace` - Borrar caracter
-- `Enter` - Nueva linea
-- Arrow keys - Movimiento
+### Build from Source
 
-### Modo Visual
-- `Esc` o `v` - Salir a modo Normal
-- `h/j/k/l/w/b/0/$` - Movimiento (extiende seleccion)
-- `d/x` - Delete seleccion
-- `y` - Yank seleccion
-- `c` - Change seleccion (delete + insert mode)
-
-## Pantallas
-
-- `MainMenu` - Menu principal con opciones
-- `DailyDrill` - Practica diaria (3-5 min)
-- `FreePractice` - Practica libre en buffer Vim
-- `GuidedLearning` - Aprendizaje guiado paso a paso
-- `Progress` - Estadisticas y logros
-- `Settings` - Configuracion (hints, duracion, dificultad, sonido)
-- `Help` - Atajos de teclado
-
-## Dependencias Principales
-
-```toml
-[dependencies]
-ratatui = "0.26"      # TUI framework
-crossterm = "0.27"    # Terminal input/output
-rusqlite = "0.31"     # SQLite database
-anyhow = "1.0"        # Error handling
+```bash
+git clone https://github.com/stiffis/vimurai.git
+cd vimurai
+cargo install --path .
 ```
 
-## Para Continuar el Trabajo
+## 🕹️ Usage
 
-1. **Arreglar compilacion**:
-   ```rust
-   // En src/app/app.rs linea 89
-   _ => Ok(())  // En vez de _ => {}
-   ```
+Run the application:
 
-2. **Eliminar import no usado** (linea 10):
-   ```rust
-   use crate::engine::vim_buffer::MoveDirection;  // Solo esto
-   ```
+```bash
+vimurai
+```
 
-3. **Verificar que el buffer Vim funciona al 100%**:
-   - Escape solo cambia modo, no sale de practica
-   - Modo Visual no permite typing
-   - Todos los comandos funcionan correctamente
+### Game Modes
 
-## Siguientes Tareas
+1.  **Daily Drill:** Your personalized daily workout. Focuses on what you're about to forget.
+2.  **Guided Learning:** Browse the library of techniques and practice specific skills at your own pace.
+3.  **Free Practice:** A sandbox buffer to experiment freely.
 
-- [x] Fix compilation error en app.rs:89
-- [x] Remove unused VimBuffer import warning
-- [x] Test Vim buffer mode switching
-- [x] Test Visual mode (no typing allowed)
-- [x] Test Escape key behavior
-- [ ] Verificar todos los comandos Vim implementados
+### Controls
+
+- **Navigation:** `j` / `k` (or arrows) to move in menus.
+- **Select:** `Enter`.
+- **Back/Quit:** `Esc` or `q`.
+- **In-Game:** Use Vim keys! (`:q` to exit practice).
+
+## 🥋 Curriculum (The Path)
+
+| Rank |       Belt        | Focus            | Skills                            |
+| :--: | :---------------: | :--------------- | :-------------------------------- |
+|  1   |  ⬜ **Survivor**  | Basic Navigation | `h` `j` `k` `l` `w` `b` `i` `a`   |
+|  2   |   🟨 **Sniper**   | Precision        | `f` `t` `^` `$` `0`               |
+|  3   | 🟧 **Refactorer** | Grammar          | `cw` `dw` `cc` `dd` `c$`          |
+|  4   |  🟩 **Surgeon**   | Text Objects     | `ci"` `di(` `yiw` _(Coming Soon)_ |
+|  5   | 🟦 **Architect**  | Search & File    | `/` `?` `gg` `G`                  |
+|  6   |   🟪 **Wizard**   | Automation       | `q` `@` Registers                 |
+
+## 🛠️ Architecture
+
+- **Engine:** Custom Vim-buffer implementation supporting undo/redo and operator-pending states.
+- **Persistence:** SQLite database (`progress.db`) stores user stats and scheduling data.
+- **UI:** Rendered via `ratatui` with support for modals, gutters, and colored status lines.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1.  Fork the project
+2.  Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3.  Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4.  Push to the branch (`git push origin feature/AmazingFeature`)
+5.  Open a Pull Request
+
+## 📄 License
+
+Distributed under the MIT License. See `LICENSE` for more information.
