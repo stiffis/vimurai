@@ -440,6 +440,18 @@ impl VimBuffer {
         }
         false
     }
+
+    pub fn simulate_motion<F>(&self, motion: F) -> Point
+    where
+        F: Fn(&mut VimBuffer),
+    {
+        let mut temp = self.clone();
+        motion(&mut temp);
+        Point {
+            row: temp.cursor_row,
+            col: temp.cursor_col,
+        }
+    }
 }
 
 impl Default for VimBuffer {

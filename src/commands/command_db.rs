@@ -173,6 +173,61 @@ impl CommandDatabase {
                 hint: "Use '^' to go to start of text".to_string(),
                 solution_keys: "^".to_string(),
             },
+
+            // --- LEVEL 3: REFACTORER ---
+            
+            Exercise {
+                id: "R1".to_string(),
+                level: Level::Refactorer,
+                title: "Change Word".to_string(),
+                description: "Change the variable name 'count' to 'total'".to_string(),
+                context: "Refactoring variable names".to_string(),
+                initial_lines: vec!["let count = 0;".to_string()],
+                initial_cursor: (0, 4), // on 'c'
+                expected_lines: Some(vec!["let total = 0;".to_string()]),
+                expected_cursor: None,
+                hint: "Use 'cw' to change a word".to_string(),
+                solution_keys: "cwtotal".to_string(),
+            },
+            Exercise {
+                id: "R2".to_string(),
+                level: Level::Refactorer,
+                title: "Delete Word".to_string(),
+                description: "Delete the unnecessary 'mut' keyword".to_string(),
+                context: "Cleaning up code".to_string(),
+                initial_lines: vec!["let mut name = \"Vim\";".to_string()],
+                initial_cursor: (0, 4), // on 'm'
+                expected_lines: Some(vec!["let  name = \"Vim\";".to_string()]),
+                expected_cursor: None,
+                hint: "Use 'dw' to delete a word".to_string(),
+                solution_keys: "dw".to_string(),
+            },
+            Exercise {
+                id: "R3".to_string(),
+                level: Level::Refactorer,
+                title: "Change to End".to_string(),
+                description: "Change the string content to 'Master'".to_string(),
+                context: "Updating string values".to_string(),
+                initial_lines: vec!["let msg = \"Hello World\";".to_string()],
+                initial_cursor: (0, 11), // on 'H'
+                expected_lines: Some(vec!["let msg = \"Master\";".to_string()]),
+                expected_cursor: None,
+                hint: "Use 'c' with a motion or 'c$'".to_string(),
+                solution_keys: "c$Master\";".to_string(), // Simplified target
+            },
+            Exercise {
+                id: "R4".to_string(),
+                level: Level::Refactorer,
+                title: "Clean Line".to_string(),
+                description: "Clear the entire line content to rewrite it".to_string(),
+                context: "Major refactor".to_string(),
+                initial_lines: vec!["// This logic is deprecated and needs to be replaced".to_string()],
+                initial_cursor: (0, 10),
+                expected_lines: Some(vec!["".to_string()]),
+                expected_cursor: None,
+                hint: "Use 'cc' to change the whole line".to_string(),
+                solution_keys: "cc".to_string(),
+            },
         ]
     }
 

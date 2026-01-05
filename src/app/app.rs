@@ -12,7 +12,7 @@ use crate::commands::command_db::CommandDatabase;
 use crate::commands::command::Exercise;
 use crate::database::UserProgressDB;
 use crate::spaced_rep::{SM2Algorithm, Quality, SM2Item};
-use crate::engine::mode::VimMode;
+use crate::engine::mode::{VimMode, Operator};
 use crate::engine::vim_buffer::{MoveDirection, Point};
 use crate::utils::Result;
 
@@ -250,6 +250,7 @@ impl App {
             VimMode::Insert => self.handle_insert_mode(key),
             VimMode::Visual => self.handle_visual_mode(key),
             VimMode::Command => self.handle_command_mode(key),
+            VimMode::OperatorPending(op) => self.handle_operator_pending_mode(key, op),
         }
     }
 
@@ -321,9 +322,6 @@ impl App {
             }
             KeyCode::Char('A') => {
                 self.practice_state.vim_buffer.move_to_line_end();
-                // Move one past end is handled by insert mode logic usually, 
-                // but let's ensure we are at end.
-                // Vim 'A' is append at EOL. In our buffer, col = len is allowed for insert.
                 let row = self.practice_state.vim_buffer.cursor_row;
                 self.practice_state.vim_buffer.cursor_col = self.practice_state.vim_buffer.line_len(row);
                 self.practice_state.vim_mode = VimMode::Insert;
@@ -342,6 +340,17 @@ impl App {
                 self.practice_state.vim_buffer.lines.insert(row, String::new());
                 self.practice_state.vim_buffer.cursor_col = 0;
                 self.practice_state.vim_mode = VimMode::Insert;
+            }
+
+            // Operators (Switch to Pending Mode)
+            KeyCode::Char('d') => {
+                self.practice_state.vim_mode = VimMode::OperatorPending(Operator::Delete);
+            }
+            KeyCode::Char('y') => {
+                self.practice_state.vim_mode = VimMode::OperatorPending(Operator::Yank);
+            }
+            KeyCode::Char('c') => {
+                self.practice_state.vim_mode = VimMode::OperatorPending(Operator::Change);
             }
 
             // Visual & Command
@@ -384,8 +393,8 @@ impl App {
                 }
             }
             
-            // Pending commands (d, y, c, g)
-            KeyCode::Char('d') | KeyCode::Char('y') | KeyCode::Char('c') | KeyCode::Char('g') => {
+            // Pending commands (g) - gg is handled by handle_command_completion
+            KeyCode::Char('g') => {
                  if let KeyCode::Char(c) = key.code {
                     self.practice_state.key_buffer.push(c);
                 }
@@ -558,6 +567,142 @@ impl App {
         Ok(())
     }
 
+    pub fn handle_operator_pending_mode(&mut self, key: KeyEvent, op: Operator) -> Result<()> {
+        if key.code == KeyCode::Esc {
+            self.practice_state.vim_mode = VimMode::Normal;
+            self.practice_state.key_buffer.clear();
+            return Ok(());
+        }
+
+        // 1. Check for pending char search (e.g., user pressed 'd', then 'f', waiting for char)
+        let pending_motion = self.practice_state.key_buffer.clone();
+        if !pending_motion.is_empty() {
+             let first_char = pending_motion.chars().next().unwrap();
+             if matches!(first_char, 'f' | 'F' | 't' | 'T') && pending_motion.len() == 1 {
+                 if let KeyCode::Char(target) = key.code {
+                     let forward = matches!(first_char, 'f' | 't');
+                     let inclusive = matches!(first_char, 'f' | 'F');
+                     
+                     // Simulate find
+                     let end = self.practice_state.vim_buffer.simulate_motion(|b| {
+                         b.find_char_in_line(target, forward, inclusive);
+                     });
+                     
+                     self.execute_operator(op, end);
+                     self.practice_state.key_buffer.clear();
+                     return Ok(());
+                 }
+             }
+        }
+
+        // 2. Handle double operator (dd, yy, cc)
+        match (op, key.code) {
+            (Operator::Delete, KeyCode::Char('d')) => {
+                // dd logic
+                self.practice_state.vim_buffer.save_history();
+                let row = self.practice_state.vim_buffer.cursor_row;
+                if row < self.practice_state.vim_buffer.lines.len() {
+                    self.practice_state.vim_buffer.lines.remove(row);
+                    if self.practice_state.vim_buffer.lines.is_empty() {
+                        self.practice_state.vim_buffer.lines.push(String::new());
+                    }
+                    let len = self.practice_state.vim_buffer.lines.len();
+                    if self.practice_state.vim_buffer.cursor_row >= len {
+                        self.practice_state.vim_buffer.cursor_row = len.saturating_sub(1);
+                    }
+                }
+                self.practice_state.vim_mode = VimMode::Normal;
+                self.check_exercise_completion();
+                return Ok(());
+            }
+            (Operator::Yank, KeyCode::Char('y')) => {
+                // yy logic
+                let row = self.practice_state.vim_buffer.cursor_row;
+                if let Some(line) = self.practice_state.vim_buffer.lines.get(row) {
+                    self.practice_state.key_buffer = format!("yanked:{}", line);
+                }
+                self.practice_state.vim_mode = VimMode::Normal;
+                self.check_exercise_completion();
+                return Ok(());
+            }
+            (Operator::Change, KeyCode::Char('c')) => {
+                // cc logic
+                self.practice_state.vim_buffer.save_history();
+                let row = self.practice_state.vim_buffer.cursor_row;
+                if row < self.practice_state.vim_buffer.lines.len() {
+                    self.practice_state.vim_buffer.lines[row].clear();
+                    self.practice_state.vim_buffer.cursor_col = 0;
+                }
+                self.practice_state.vim_mode = VimMode::Insert;
+                self.check_exercise_completion();
+                return Ok(());
+            }
+            _ => {}
+        }
+
+        // 3. Handle start of pending motion (f, t...)
+        match key.code {
+            KeyCode::Char('f') | KeyCode::Char('F') | KeyCode::Char('t') | KeyCode::Char('T') => {
+                if let KeyCode::Char(c) = key.code {
+                    self.practice_state.key_buffer.push(c);
+                    return Ok(());
+                }
+            }
+            _ => {}
+        }
+
+        // 4. Handle simple motions
+        let motion_end = match key.code {
+            KeyCode::Char('w') => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_word_forward())),
+            KeyCode::Char('b') => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_word_backward())),
+            KeyCode::Char('e') => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_word_end())),
+            KeyCode::Char('$') => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_to_line_end())),
+            KeyCode::Char('0') => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_to_line_start())),
+            KeyCode::Char('^') => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_to_non_blank_start())),
+            KeyCode::Char('h') | KeyCode::Left => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_cursor(MoveDirection::Left))),
+            KeyCode::Char('l') | KeyCode::Right => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_cursor(MoveDirection::Right))),
+            KeyCode::Char('j') | KeyCode::Down => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_cursor(MoveDirection::Down))),
+            KeyCode::Char('k') | KeyCode::Up => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_cursor(MoveDirection::Up))),
+            _ => None,
+        };
+
+        if let Some(end) = motion_end {
+            self.execute_operator(op, end);
+        } else {
+            // Cancel if unknown key and not pending
+            if self.practice_state.key_buffer.is_empty() {
+                self.practice_state.vim_mode = VimMode::Normal;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn execute_operator(&mut self, op: Operator, end: Point) {
+        let start = Point { 
+            row: self.practice_state.vim_buffer.cursor_row, 
+            col: self.practice_state.vim_buffer.cursor_col 
+        };
+
+        match op {
+            Operator::Delete => {
+                self.practice_state.vim_buffer.delete_range(start, end);
+                self.practice_state.vim_mode = VimMode::Normal;
+            }
+            Operator::Yank => {
+                let text = self.practice_state.vim_buffer.get_range_text(start, end);
+                self.practice_state.key_buffer = format!("yanked:{}", text);
+                self.practice_state.vim_mode = VimMode::Normal;
+            }
+            Operator::Change => {
+                self.practice_state.vim_buffer.delete_range(start, end);
+                self.practice_state.vim_mode = VimMode::Insert;
+            }
+        }
+        self.check_exercise_completion();
+    }
+
+
     fn handle_command_completion(&mut self) {
         let buf = self.practice_state.key_buffer.clone();
         if buf.len() >= 2 {
@@ -595,6 +740,10 @@ impl App {
         } else if buf.len() == 1 {
             // Single char commands reset the buffer unless followed by completion
             let c = buf.chars().next().unwrap();
+            // IMPORTANT: keep alive operator pending chars if logic depends on them, 
+            // but in operator pending mode, this buffer logic is separate. 
+            // However, Normal mode still uses this for dd/yy/cc/gg.
+            // Also f/t pending in normal mode.
             if !matches!(c, 'd' | 'y' | 'c' | 'g' | 'r' | 'f' | 'F' | 't' | 'T') {
                 self.practice_state.key_buffer.clear();
             }

@@ -265,6 +265,7 @@ impl UI {
                         VimMode::Insert => Style::default().fg(Color::Blue),
                         VimMode::Visual => Style::default().fg(Color::Yellow),
                         VimMode::Command => Style::default().fg(Color::Magenta),
+                        VimMode::OperatorPending(_) => Style::default().fg(Color::LightRed),
                     }),
             );
         frame.render_widget(buffer, chunks[1]);
@@ -510,6 +511,7 @@ fn draw_status_bar(frame: &mut Frame, app: &super::app::App, message: &str) {
         VimMode::Insert => Color::Blue,
         VimMode::Visual => Color::Yellow,
         VimMode::Command => Color::Magenta,
+        VimMode::OperatorPending(_) => Color::LightRed,
     };
 
     let mode_text = format!(" {:?} ", mode).to_uppercase();
