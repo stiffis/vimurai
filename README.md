@@ -11,15 +11,14 @@
 <p align="center">
   <img src="assets/logo.png" alt="Vimurai Logo" width="200"/>
   <br>
-  <em>(Logo Placeholder - Add your logo here)</em>
 </p>
 
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="assets/p1.png" alt="Main Menu" width="45%">
-  <img src="assets/p2.png" alt="Daily Drill" width="45%">
-  <img src="assets/p3.png" alt="Daily Drill" width="45%">
+  <img src="assets/p1.png" alt="Main Menu" width="50%">
+  <img src="assets/p2.png" alt="Daily Drill" width="50%">
+  <img src="assets/p3.png" alt="Daily Drill" width="50%">
 </p>
 
 ## ✨ Features
