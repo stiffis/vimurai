@@ -189,6 +189,7 @@ impl App {
                     "Daily Drill" => {
                         self.current_screen = Screen::DailyDrill;
                         self.practice_state.reset();
+                        self.practice_state.mode = PracticeMode::Daily;
                         self.start_daily_drill();
                     }
                     "Guided Learning" => {
@@ -199,6 +200,7 @@ impl App {
                     "Free Practice" => {
                         self.current_screen = Screen::FreePractice;
                         self.practice_state.reset();
+                        self.practice_state.mode = PracticeMode::Free;
                     }
                     "Progress" => {
                         self.refresh_progress_ui();
@@ -220,6 +222,7 @@ impl App {
             KeyCode::Char('d') => {
                 self.current_screen = Screen::DailyDrill;
                 self.practice_state.reset();
+                self.practice_state.mode = PracticeMode::Daily;
                 self.start_daily_drill();
             }
             KeyCode::Char('g') => {
@@ -230,6 +233,7 @@ impl App {
             KeyCode::Char('f') => {
                 self.current_screen = Screen::FreePractice;
                 self.practice_state.reset();
+                self.practice_state.mode = PracticeMode::Free;
             }
             KeyCode::Char('p') => {
                 self.refresh_progress_ui();
@@ -299,6 +303,7 @@ impl App {
                         if let Some(exercise) = exercises.get(self.guided_learning_state.selected_exercise_index) {
                             self.current_screen = Screen::DailyDrill; 
                             self.practice_state.reset();
+                            self.practice_state.mode = PracticeMode::Guided;
                             self.load_exercise(exercise.clone());
                         }
                     }
@@ -454,7 +459,7 @@ impl App {
             }
 
             // Editing
-            KeyCode::Char('x') => {
+            KeyCode::Char('x') | KeyCode::Delete => {
                 self.practice_state.vim_buffer.save_history();
                 let row = self.practice_state.vim_buffer.cursor_row;
                 let col = self.practice_state.vim_buffer.cursor_col;
@@ -498,13 +503,40 @@ impl App {
 
             // Backspace
             KeyCode::Backspace => {
+                self.practice_state.vim_buffer.save_history();
                 if self.practice_state.vim_buffer.cursor_col > 0 {
                     self.practice_state.vim_buffer.cursor_col -= 1;
                     let row = self.practice_state.vim_buffer.cursor_row;
                     let line = &mut self.practice_state.vim_buffer.lines[row];
-                    if !line.is_empty() {
+                    // Safety check index
+                    if self.practice_state.vim_buffer.cursor_col < line.len() {
                         line.remove(self.practice_state.vim_buffer.cursor_col);
                     }
+                } else if self.practice_state.vim_buffer.cursor_row > 0 {
+                    // Join with previous line
+                    let row = self.practice_state.vim_buffer.cursor_row;
+                    let current_line = self.practice_state.vim_buffer.lines.remove(row);
+                    let prev_row = row - 1;
+                    let new_col = self.practice_state.vim_buffer.lines[prev_row].len();
+                    self.practice_state.vim_buffer.lines[prev_row].push_str(&current_line);
+                    self.practice_state.vim_buffer.cursor_row = prev_row;
+                    self.practice_state.vim_buffer.cursor_col = new_col;
+                }
+            }
+            
+            // Delete Key
+            KeyCode::Delete => {
+                self.practice_state.vim_buffer.save_history();
+                let row = self.practice_state.vim_buffer.cursor_row;
+                let col = self.practice_state.vim_buffer.cursor_col;
+                let line_len = self.practice_state.vim_buffer.lines[row].len();
+                
+                if col < line_len {
+                    self.practice_state.vim_buffer.lines[row].remove(col);
+                } else if row + 1 < self.practice_state.vim_buffer.lines.len() {
+                    // Join with next line
+                    let next_line = self.practice_state.vim_buffer.lines.remove(row + 1);
+                    self.practice_state.vim_buffer.lines[row].push_str(&next_line);
                 }
             }
 
@@ -847,7 +879,11 @@ impl App {
                     self.current_screen,
                     Screen::DailyDrill | Screen::FreePractice | Screen::GuidedLearning
                 ) {
-                    self.current_screen = Screen::MainMenu;
+                    if self.practice_state.mode == PracticeMode::Guided {
+                        self.current_screen = Screen::GuidedLearning;
+                    } else {
+                        self.current_screen = Screen::MainMenu;
+                    }
                     self.practice_state.reset();
                 } else {
                     self.should_quit = true;

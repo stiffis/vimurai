@@ -125,6 +125,19 @@ impl MainMenuState {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum PracticeMode {
+    Daily,
+    Guided,
+    Free,
+}
+
+impl Default for PracticeMode {
+    fn default() -> Self {
+        PracticeMode::Daily
+    }
+}
+
 /// State for practice screens
 #[derive(Clone, Debug)]
 pub struct PracticeState {
@@ -140,6 +153,7 @@ pub struct PracticeState {
     pub total_exercises: usize,
     pub last_esc_time: Option<std::time::Instant>,
     pub current_exercise: Option<Exercise>,
+    pub mode: PracticeMode,
 }
 
 impl Default for PracticeState {
@@ -163,6 +177,7 @@ impl PracticeState {
             total_exercises: 10,
             last_esc_time: None,
             current_exercise: None,
+            mode: PracticeMode::Daily,
         }
     }
 
@@ -174,6 +189,7 @@ impl PracticeState {
         self.start_time = std::time::Instant::now();
         self.last_esc_time = None;
         self.current_exercise = None;
+        self.mode = PracticeMode::Daily;
     }
 
     pub fn elapsed_time(&self) -> std::time::Duration {
