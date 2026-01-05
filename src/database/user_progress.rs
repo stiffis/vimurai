@@ -12,6 +12,17 @@ pub struct UserStats {
     pub total_practice_minutes: u64,
 }
 
+#[derive(Debug, Clone)]
+pub struct CommandProgress {
+    pub command_id: String,
+    pub repetition: u32,
+    pub interval_days: f64,
+    pub ease_factor: f64,
+    pub quality: u8,
+    pub next_review: u64,
+    pub mastered: bool,
+}
+
 #[derive(Debug)]
 pub struct UserProgressDB {
     conn: Connection,
@@ -120,6 +131,27 @@ impl UserProgressDB {
         Ok(())
     }
 
+    pub fn get_command_progress(&self, command_id: &str) -> Result<Option<CommandProgress>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT * FROM command_progress WHERE command_id = ?"
+        )?;
+        let mut rows = stmt.query([command_id])?;
+
+        if let Some(row) = rows.next()? {
+            Ok(Some(CommandProgress {
+                command_id: row.get(0)?,
+                repetition: row.get(1)?,
+                interval_days: row.get(2)?,
+                ease_factor: row.get(3)?,
+                quality: row.get(4)?,
+                next_review: row.get(5)?,
+                mastered: row.get::<_, i64>(6)? != 0,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn update_command_progress(
         &self,
         command_id: &str,
@@ -127,6 +159,7 @@ impl UserProgressDB {
         interval_days: f64,
         ease_factor: f64,
         quality: u8,
+        next_review: u64,
         mastered: bool,
     ) -> Result<()> {
         let params: &[&dyn ToSql] = &[
@@ -135,12 +168,13 @@ impl UserProgressDB {
             &interval_days,
             &ease_factor,
             &(quality as i64),
+            &(next_review as i64),
             &(if mastered { 1i64 } else { 0i64 }),
         ];
         self.conn.execute(
             "INSERT OR REPLACE INTO command_progress
-             (command_id, repetition, interval_days, ease_factor, quality, mastered)
-             VALUES (?, ?, ?, ?, ?, ?)",
+             (command_id, repetition, interval_days, ease_factor, quality, next_review, mastered)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
             params,
         )?;
         Ok(())

@@ -8,6 +8,10 @@ use crossterm::{
 
 use ratatui::{prelude::CrosstermBackend, Terminal};
 
+use crate::commands::command_db::CommandDatabase;
+use crate::commands::command::Exercise;
+use crate::database::UserProgressDB;
+use crate::spaced_rep::{SM2Algorithm, Quality, SM2Item};
 use crate::engine::mode::VimMode;
 use crate::engine::vim_buffer::{MoveDirection, Point};
 use crate::utils::Result;
@@ -24,6 +28,8 @@ pub struct App {
     pub progress_state: ProgressState,
     pub settings_state: SettingsState,
     pub show_quit_confirm: bool,
+    pub command_db: CommandDatabase,
+    pub progress_db: UserProgressDB,
 }
 
 impl App {
@@ -36,6 +42,8 @@ impl App {
             progress_state: ProgressState::new(),
             settings_state: SettingsState::new(),
             show_quit_confirm: false,
+            command_db: CommandDatabase::new(),
+            progress_db: UserProgressDB::new()?,
         })
     }
 
@@ -126,7 +134,7 @@ impl App {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
+    pub fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
         // Solo manejar keys en Practice screens
         if matches!(
             self.current_screen,
@@ -231,7 +239,7 @@ impl App {
         Ok(())
     }
 
-    fn handle_practice_key(&mut self, key: KeyEvent) -> Result<()> {
+    pub fn handle_practice_key(&mut self, key: KeyEvent) -> Result<()> {
         // El manejador de teclado siempre debe pasar por aquí, nunca salir directamente al menú
         // El Escape solo cambia de modo, no sale de la pantalla
 
@@ -243,7 +251,27 @@ impl App {
         }
     }
 
-    fn handle_normal_mode(&mut self, key: KeyEvent) -> Result<()> {
+    pub fn handle_normal_mode(&mut self, key: KeyEvent) -> Result<()> {
+        // If level completed, Enter moves to next
+        if self.practice_state.is_correct == Some(true) {
+            if key.code == KeyCode::Enter {
+                // Load next exercise logic
+                if let Some(current) = &self.practice_state.current_exercise {
+                    // Find current index and load next
+                    let all = self.command_db.get_all_exercises();
+                    if let Some(pos) = all.iter().position(|e| e.id == current.id) {
+                        if pos + 1 < all.len() {
+                            self.load_exercise(all[pos + 1].clone());
+                            return Ok(());
+                        } else {
+                            self.practice_state.current_instruction = "ALL LEVELS COMPLETED!".to_string();
+                             return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+
         // Check for pending operator/motion (like 'f' waiting for char)
         let pending = self.practice_state.key_buffer.clone();
         if !pending.is_empty() {
@@ -254,6 +282,7 @@ impl App {
                      let inclusive = matches!(first_char, 'f' | 'F');
                      self.practice_state.vim_buffer.find_char_in_line(target, forward, inclusive);
                      self.practice_state.key_buffer.clear();
+                     self.check_exercise_completion();
                      return Ok(());
                  } else if key.code == KeyCode::Esc {
                      self.practice_state.key_buffer.clear();
@@ -363,10 +392,11 @@ impl App {
         }
 
         self.handle_command_completion();
+        self.check_exercise_completion();
         Ok(())
     }
 
-    fn handle_insert_mode(&mut self, key: KeyEvent) -> Result<()> {
+    pub fn handle_insert_mode(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             // Exit insert mode
             KeyCode::Esc => {
@@ -427,7 +457,7 @@ impl App {
         Ok(())
     }
 
-    fn handle_visual_mode(&mut self, key: KeyEvent) -> Result<()> {
+    pub fn handle_visual_mode(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             // Exit visual mode
             KeyCode::Esc | KeyCode::Char('v') => {
@@ -490,7 +520,7 @@ impl App {
         Ok(())
     }
 
-    fn handle_command_mode(&mut self, key: KeyEvent) -> Result<()> {
+    pub fn handle_command_mode(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             // Exit command mode
             KeyCode::Esc => {
@@ -562,7 +592,7 @@ impl App {
         } else if buf.len() == 1 {
             // Single char commands reset the buffer unless followed by completion
             let c = buf.chars().next().unwrap();
-            if !matches!(c, 'd' | 'y' | 'c' | 'g' | 'r') {
+            if !matches!(c, 'd' | 'y' | 'c' | 'g' | 'r' | 'f' | 'F' | 't' | 'T') {
                 self.practice_state.key_buffer.clear();
             }
         }
@@ -683,8 +713,112 @@ impl App {
     }
 
     fn start_daily_drill(&mut self) {
-        self.practice_state.current_instruction = "Daily Drill: Practice these commands".to_string();
-        self.practice_state.hint = "Press the keybinding for the command shown".to_string();
+        // 1. Try to get due exercises
+        let due_ids = self.progress_db.get_due_commands().unwrap_or_default();
+        let all_exercises = self.command_db.get_all_exercises();
+
+        if let Some(due_id) = due_ids.first() {
+            if let Some(ex) = all_exercises.iter().find(|e| &e.id == due_id) {
+                self.load_exercise(ex.clone());
+                return;
+            }
+        }
+
+        // 2. If nothing due, find the first exercise with 0 progress
+        for ex in all_exercises {
+            let progress = self.progress_db.get_command_progress(&ex.id).unwrap_or(None);
+            if progress.is_none() {
+                self.load_exercise(ex.clone());
+                return;
+            }
+        }
+
+        // 3. Fallback to first if everything is done but not due
+        if let Some(first) = all_exercises.first() {
+            self.load_exercise((*first).clone());
+        } else {
+            self.practice_state.current_instruction = "No exercises available!".to_string();
+        }
+    }
+
+    fn load_exercise(&mut self, exercise: Exercise) {
+        self.practice_state.vim_buffer.lines = exercise.initial_lines.clone();
+        self.practice_state.vim_buffer.cursor_row = exercise.initial_cursor.0;
+        self.practice_state.vim_buffer.cursor_col = exercise.initial_cursor.1;
+        self.practice_state.current_instruction = format!("{}: {}", exercise.title, exercise.description);
+        self.practice_state.hint = format!("Context: {} | Hint: {}", exercise.context, exercise.hint);
+        self.practice_state.current_exercise = Some(exercise);
+        self.practice_state.is_correct = None;
+    }
+
+    pub fn check_exercise_completion(&mut self) {
+        if self.practice_state.is_correct == Some(true) {
+            return; // Already completed
+        }
+
+        if let Some(exercise) = &self.practice_state.current_exercise {
+            let mut correct = true;
+
+            // Check content if expected
+            if let Some(expected_lines) = &exercise.expected_lines {
+                if self.practice_state.vim_buffer.lines != *expected_lines {
+                    correct = false;
+                }
+            }
+
+            // Check cursor if expected
+            if let Some(expected_cursor) = exercise.expected_cursor {
+                if self.practice_state.vim_buffer.cursor_row != expected_cursor.0 
+                   || self.practice_state.vim_buffer.cursor_col != expected_cursor.1 {
+                    correct = false;
+                }
+            }
+
+            if correct {
+                self.practice_state.is_correct = Some(true);
+                self.practice_state.current_instruction = "SUCCESS! Press Enter for next level.".to_string();
+                
+                // Record result in DB
+                let id = exercise.id.clone();
+                self.record_exercise_result(id, Quality::Perfect);
+            }
+        }
+    }
+
+    fn record_exercise_result(&mut self, exercise_id: String, quality: Quality) {
+        let now = chrono::Utc::now().timestamp() as u64;
+        
+        // 1. Get current progress from DB
+        let current_progress = self.progress_db.get_command_progress(&exercise_id).unwrap_or(None);
+        
+        // 2. Convert to SM2Item
+        let sm2_item = match current_progress {
+            Some(p) => SM2Item {
+                repetition: p.repetition,
+                interval: p.interval_days,
+                ease_factor: p.ease_factor,
+                quality: p.quality,
+                next_review: p.next_review,
+            },
+            None => SM2Item::default(),
+        };
+        
+        // 3. Calculate next review
+        let updated = SM2Algorithm::calculate_next_review(sm2_item, quality, now);
+        
+        // 4. Save to DB
+        let _ = self.progress_db.update_command_progress(
+            &exercise_id,
+            updated.repetition,
+            updated.interval,
+            updated.ease_factor,
+            updated.quality,
+            updated.next_review,
+            updated.repetition > 5 // Heuristic for mastered
+        );
+        
+        // 5. Add XP
+        let _ = self.progress_db.add_xp(10);
     }
 
     pub fn quit(&mut self) {

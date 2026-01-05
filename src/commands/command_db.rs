@@ -47,7 +47,7 @@ impl CommandDatabase {
                 expected_lines: None,
                 expected_cursor: Some((0, 29)), // on 'z'
                 hint: "Use 'l' to move right".to_string(),
-                solution_keys: "llllllll".to_string(), // In real app, w is better, but this drills basics
+                solution_keys: "llllllllllllllll".to_string(), // In real app, w is better, but this drills basics
             },
             Exercise {
                 id: "N3".to_string(),
@@ -111,10 +111,10 @@ impl CommandDatabase {
                 context: "Starting function body".to_string(),
                 initial_lines: vec!["fn main() {".to_string(), "}".to_string()],
                 initial_cursor: (0, 0),
-                expected_lines: Some(vec!["fn main() {".to_string(), "    ".to_string(), "}".to_string()]),
+                expected_lines: Some(vec!["fn main() {".to_string(), "".to_string(), "}".to_string()]),
                 expected_cursor: None,
                 hint: "Use 'o' to open a line below".to_string(),
-                solution_keys: "o    ".to_string(), // Spaces depend on auto-indent, assuming none for now
+                solution_keys: "o".to_string(), 
             },
 
             // --- LEVEL 2: SNIPER ---
@@ -154,7 +154,7 @@ impl CommandDatabase {
                 initial_lines: vec!["(\"text content\")".to_string()],
                 initial_cursor: (0, 1),
                 expected_lines: None,
-                expected_cursor: Some((0, 13)), // char before )
+                expected_cursor: Some((0, 14)), // char before )
                 hint: "Use 't' to jump 'till' a character".to_string(),
                 solution_keys: "t)".to_string(),
             },

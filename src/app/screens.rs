@@ -1,4 +1,5 @@
 use crate::engine::{mode::VimMode, vim_buffer::VimBuffer};
+use crate::commands::command::Exercise;
 
 /// Enum representing all possible screens in the app
 #[derive(Clone, Debug, PartialEq)]
@@ -107,6 +108,7 @@ pub struct PracticeState {
     pub exercise_number: usize,
     pub total_exercises: usize,
     pub last_esc_time: Option<std::time::Instant>,
+    pub current_exercise: Option<Exercise>,
 }
 
 impl Default for PracticeState {
@@ -129,6 +131,7 @@ impl PracticeState {
             exercise_number: 1,
             total_exercises: 10,
             last_esc_time: None,
+            current_exercise: None,
         }
     }
 
@@ -139,6 +142,7 @@ impl PracticeState {
         self.is_correct = None;
         self.start_time = std::time::Instant::now();
         self.last_esc_time = None;
+        self.current_exercise = None;
     }
 
     pub fn elapsed_time(&self) -> std::time::Duration {
