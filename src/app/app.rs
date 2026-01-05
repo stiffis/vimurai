@@ -25,6 +25,7 @@ pub struct App {
     pub current_screen: Screen,
     pub main_menu_state: MainMenuState,
     pub practice_state: PracticeState,
+    pub guided_learning_state: GuidedLearningState,
     pub progress_state: ProgressState,
     pub settings_state: SettingsState,
     pub show_quit_confirm: bool,
@@ -39,6 +40,7 @@ impl App {
             current_screen: Screen::MainMenu,
             main_menu_state: MainMenuState::new(),
             practice_state: PracticeState::new(),
+            guided_learning_state: GuidedLearningState::new(),
             progress_state: ProgressState::new(),
             settings_state: SettingsState::new(),
             show_quit_confirm: false,
@@ -138,13 +140,14 @@ impl App {
         // Solo manejar keys en Practice screens
         if matches!(
             self.current_screen,
-            Screen::DailyDrill | Screen::FreePractice | Screen::GuidedLearning
+            Screen::DailyDrill | Screen::FreePractice
         ) {
             self.handle_practice_key(key)?;
         } else {
             // Menu screens
             match self.current_screen {
                 Screen::MainMenu => self.handle_main_menu_key(key)?,
+                Screen::GuidedLearning => self.handle_guided_learning_key(key)?,
                 Screen::Progress => self.handle_progress_key(key)?,
                 Screen::Settings => self.handle_settings_key(key)?,
                 Screen::Help => self.handle_help_key(key)?,
@@ -191,6 +194,7 @@ impl App {
                     "Guided Learning" => {
                         self.current_screen = Screen::GuidedLearning;
                         self.practice_state.reset();
+                        self.guided_learning_state.levels = self.command_db.get_levels();
                     }
                     "Free Practice" => {
                         self.current_screen = Screen::FreePractice;
@@ -221,6 +225,7 @@ impl App {
             KeyCode::Char('g') => {
                 self.current_screen = Screen::GuidedLearning;
                 self.practice_state.reset();
+                self.guided_learning_state.levels = self.command_db.get_levels();
             }
             KeyCode::Char('f') => {
                 self.current_screen = Screen::FreePractice;
@@ -235,6 +240,71 @@ impl App {
             }
             KeyCode::Char('?') => {
                 self.current_screen = Screen::Help;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn handle_guided_learning_key(&mut self, key: KeyEvent) -> Result<()> {
+        if key.code == KeyCode::Esc || key.code == KeyCode::Char('q') {
+            self.current_screen = Screen::MainMenu;
+            return Ok(());
+        }
+
+        match key.code {
+            KeyCode::Left | KeyCode::Char('h') => {
+                self.guided_learning_state.active_panel = GuidedLearningPanel::Levels;
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                if !self.guided_learning_state.levels.is_empty() {
+                    self.guided_learning_state.active_panel = GuidedLearningPanel::Exercises;
+                }
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                match self.guided_learning_state.active_panel {
+                    GuidedLearningPanel::Levels => {
+                        if self.guided_learning_state.selected_level_index > 0 {
+                            self.guided_learning_state.selected_level_index -= 1;
+                            self.guided_learning_state.selected_exercise_index = 0;
+                        }
+                    }
+                    GuidedLearningPanel::Exercises => {
+                        if self.guided_learning_state.selected_exercise_index > 0 {
+                            self.guided_learning_state.selected_exercise_index -= 1;
+                        }
+                    }
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                match self.guided_learning_state.active_panel {
+                    GuidedLearningPanel::Levels => {
+                        if self.guided_learning_state.selected_level_index + 1 < self.guided_learning_state.levels.len() {
+                            self.guided_learning_state.selected_level_index += 1;
+                            self.guided_learning_state.selected_exercise_index = 0;
+                        }
+                    }
+                    GuidedLearningPanel::Exercises => {
+                        if let Some((_, exercises)) = self.guided_learning_state.levels.get(self.guided_learning_state.selected_level_index) {
+                            if self.guided_learning_state.selected_exercise_index + 1 < exercises.len() {
+                                self.guided_learning_state.selected_exercise_index += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            KeyCode::Enter => {
+                if self.guided_learning_state.active_panel == GuidedLearningPanel::Exercises {
+                    if let Some((_, exercises)) = self.guided_learning_state.levels.get(self.guided_learning_state.selected_level_index) {
+                        if let Some(exercise) = exercises.get(self.guided_learning_state.selected_exercise_index) {
+                            self.current_screen = Screen::DailyDrill; 
+                            self.practice_state.reset();
+                            self.load_exercise(exercise.clone());
+                        }
+                    }
+                } else {
+                    self.guided_learning_state.active_panel = GuidedLearningPanel::Exercises;
+                }
             }
             _ => {}
         }
@@ -584,9 +654,14 @@ impl App {
                      let inclusive = matches!(first_char, 'f' | 'F');
                      
                      // Simulate find
-                     let end = self.practice_state.vim_buffer.simulate_motion(|b| {
+                     let mut end = self.practice_state.vim_buffer.simulate_motion(|b| {
                          b.find_char_in_line(target, forward, inclusive);
                      });
+                     
+                     // Adjust for inclusive motions (f, F)
+                     if inclusive {
+                         end.col += 1;
+                     }
                      
                      self.execute_operator(op, end);
                      self.practice_state.key_buffer.clear();
@@ -652,21 +727,30 @@ impl App {
         }
 
         // 4. Handle simple motions
-        let motion_end = match key.code {
-            KeyCode::Char('w') => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_word_forward())),
-            KeyCode::Char('b') => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_word_backward())),
-            KeyCode::Char('e') => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_word_end())),
-            KeyCode::Char('$') => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_to_line_end())),
-            KeyCode::Char('0') => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_to_line_start())),
-            KeyCode::Char('^') => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_to_non_blank_start())),
-            KeyCode::Char('h') | KeyCode::Left => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_cursor(MoveDirection::Left))),
-            KeyCode::Char('l') | KeyCode::Right => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_cursor(MoveDirection::Right))),
-            KeyCode::Char('j') | KeyCode::Down => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_cursor(MoveDirection::Down))),
-            KeyCode::Char('k') | KeyCode::Up => Some(self.practice_state.vim_buffer.simulate_motion(|b| b.move_cursor(MoveDirection::Up))),
+        let motion_result = match key.code {
+            KeyCode::Char('w') => {
+                if op == Operator::Change {
+                    Some((self.practice_state.vim_buffer.simulate_motion(|b| b.move_word_end()), true))
+                } else {
+                    Some((self.practice_state.vim_buffer.simulate_motion(|b| b.move_word_forward()), false))
+                }
+            }
+            KeyCode::Char('b') => Some((self.practice_state.vim_buffer.simulate_motion(|b| b.move_word_backward()), false)),
+            KeyCode::Char('e') => Some((self.practice_state.vim_buffer.simulate_motion(|b| b.move_word_end()), true)),
+            KeyCode::Char('$') => Some((self.practice_state.vim_buffer.simulate_motion(|b| b.move_to_line_end()), true)),
+            KeyCode::Char('0') => Some((self.practice_state.vim_buffer.simulate_motion(|b| b.move_to_line_start()), false)),
+            KeyCode::Char('^') => Some((self.practice_state.vim_buffer.simulate_motion(|b| b.move_to_non_blank_start()), false)),
+            KeyCode::Char('h') | KeyCode::Left => Some((self.practice_state.vim_buffer.simulate_motion(|b| b.move_cursor(MoveDirection::Left)), false)),
+            KeyCode::Char('l') | KeyCode::Right => Some((self.practice_state.vim_buffer.simulate_motion(|b| b.move_cursor(MoveDirection::Right)), false)),
+            KeyCode::Char('j') | KeyCode::Down => Some((self.practice_state.vim_buffer.simulate_motion(|b| b.move_cursor(MoveDirection::Down)), true)),
+            KeyCode::Char('k') | KeyCode::Up => Some((self.practice_state.vim_buffer.simulate_motion(|b| b.move_cursor(MoveDirection::Up)), true)),
             _ => None,
         };
 
-        if let Some(end) = motion_end {
+        if let Some((mut end, is_inclusive)) = motion_result {
+            if is_inclusive {
+                end.col += 1;
+            }
             self.execute_operator(op, end);
         } else {
             // Cancel if unknown key and not pending

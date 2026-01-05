@@ -1,5 +1,5 @@
 use crate::engine::{mode::VimMode, vim_buffer::VimBuffer};
-use crate::commands::command::Exercise;
+use crate::commands::command::{Exercise, Level};
 
 /// Enum representing all possible screens in the app
 #[derive(Clone, Debug, PartialEq)]
@@ -11,6 +11,37 @@ pub enum Screen {
     Progress,
     Settings,
     Help,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum GuidedLearningPanel {
+    Levels,
+    Exercises,
+}
+
+#[derive(Clone, Debug)]
+pub struct GuidedLearningState {
+    pub active_panel: GuidedLearningPanel,
+    pub selected_level_index: usize,
+    pub selected_exercise_index: usize,
+    pub levels: Vec<(Level, Vec<Exercise>)>,
+}
+
+impl Default for GuidedLearningState {
+    fn default() -> Self {
+        Self {
+            active_panel: GuidedLearningPanel::Levels,
+            selected_level_index: 0,
+            selected_exercise_index: 0,
+            levels: Vec::new(),
+        }
+    }
+}
+
+impl GuidedLearningState {
+    pub fn new() -> Self {
+        Self::default()
+    }
 }
 
 /// State for the main menu screen

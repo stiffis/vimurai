@@ -22,6 +22,7 @@ fn simulate_key(app: &mut App, c: char) {
         VimMode::Insert => app.handle_insert_mode(key).unwrap(),
         VimMode::Visual => app.handle_visual_mode(key).unwrap(),
         VimMode::Command => app.handle_command_mode(key).unwrap(),
+        VimMode::OperatorPending(op) => app.handle_operator_pending_mode(key, op).unwrap(),
     }
 }
 

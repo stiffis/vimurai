@@ -31,9 +31,10 @@ impl UI {
 
         match app.current_screen {
             Screen::MainMenu => self.render_main_menu(frame, app, chunks[1]),
-            Screen::DailyDrill | Screen::FreePractice | Screen::GuidedLearning => {
+            Screen::DailyDrill | Screen::FreePractice => {
                 self.render_practice(frame, app, chunks[1])
             }
+            Screen::GuidedLearning => self.render_guided_learning(frame, app, chunks[1]),
             Screen::Progress => self.render_progress(frame, app, chunks[1]),
             Screen::Settings => self.render_settings(frame, app, chunks[1]),
             Screen::Help => self.render_help(frame, chunks[1]),
@@ -472,6 +473,74 @@ impl UI {
             .block(Block::default().title("Help").borders(Borders::ALL))
             .wrap(Wrap { trim: true });
         frame.render_widget(help, area);
+    }
+
+    fn render_guided_learning(&self, frame: &mut Frame, app: &super::app::App, area: Rect) {
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
+            .split(area);
+
+        // --- Left Panel: Levels ---
+        let levels: Vec<ListItem> = app.guided_learning_state.levels
+            .iter()
+            .enumerate()
+            .map(|(i, (level, _))| {
+                let is_selected = i == app.guided_learning_state.selected_level_index;
+                let style = if is_selected {
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::White)
+                };
+                let prefix = if is_selected { "► " } else { "  " };
+                ListItem::new(format!("{}{:?}", prefix, level)).style(style)
+            })
+            .collect();
+        
+        let levels_block = Block::default()
+            .title("Levels")
+            .borders(Borders::ALL)
+            .style(if app.guided_learning_state.active_panel == GuidedLearningPanel::Levels {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default().fg(Color::Gray)
+            });
+            
+        let levels_list = List::new(levels)
+            .block(levels_block)
+            .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+            
+        frame.render_widget(levels_list, chunks[0]);
+
+        // --- Right Panel: Exercises ---
+        if let Some((_, exercises)) = app.guided_learning_state.levels.get(app.guided_learning_state.selected_level_index) {
+             let ex_items: Vec<ListItem> = exercises
+                .iter()
+                .enumerate()
+                .map(|(i, ex)| {
+                    let is_selected = i == app.guided_learning_state.selected_exercise_index;
+                    let style = if is_selected {
+                        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::White)
+                    };
+                    let prefix = if is_selected { "► " } else { "  " };
+                    ListItem::new(format!("{}{}: {}", prefix, ex.id, ex.title)).style(style)
+                })
+                .collect();
+
+            let ex_block = Block::default()
+                .title("Exercises")
+                .borders(Borders::ALL)
+                .style(if app.guided_learning_state.active_panel == GuidedLearningPanel::Exercises {
+                    Style::default().fg(Color::Cyan)
+                } else {
+                    Style::default().fg(Color::Gray)
+                });
+
+            let ex_list = List::new(ex_items).block(ex_block);
+            frame.render_widget(ex_list, chunks[1]);
+        }
     }
 
     fn inner_area(&self, area: Rect) -> Rect {

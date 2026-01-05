@@ -125,10 +125,9 @@ impl VimBuffer {
             self.cursor_row = self.lines.len().saturating_sub(1);
         }
         let len = self.line_len(self.cursor_row);
-        if self.cursor_col >= len && len > 0 {
-            self.cursor_col = len - 1;
-        } else if len == 0 {
-            self.cursor_col = 0;
+        // Allow cursor to be at len (standard for Insert mode and some Normal motions)
+        if self.cursor_col > len {
+            self.cursor_col = len;
         }
     }
 
@@ -179,7 +178,7 @@ impl VimBuffer {
 
         if s.row == e.row {
              let line = &self.lines[s.row];
-             let end_idx = (e.col + 1).min(line.len());
+             let end_idx = e.col.min(line.len());
              if s.col < line.len() {
                  return line[s.col..end_idx].to_string();
              }
@@ -202,7 +201,7 @@ impl VimBuffer {
 
         // Last line
         let last_line = &self.lines[e.row];
-        let end_idx = (e.col + 1).min(last_line.len());
+        let end_idx = e.col.min(last_line.len());
         result.push_str(&last_line[..end_idx]);
 
         result
@@ -221,7 +220,7 @@ impl VimBuffer {
             // Single line delete
             let line = &mut self.lines[s.row];
             if s.col < line.len() {
-                let end_idx = (e.col + 1).min(line.len());
+                let end_idx = e.col.min(line.len());
                 line.replace_range(s.col..end_idx, "");
             }
             self.cursor_row = s.row;

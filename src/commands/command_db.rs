@@ -187,7 +187,7 @@ impl CommandDatabase {
                 expected_lines: Some(vec!["let total = 0;".to_string()]),
                 expected_cursor: None,
                 hint: "Use 'cw' to change a word".to_string(),
-                solution_keys: "cwtotal".to_string(),
+                solution_keys: "cwtotal\u{1b}".to_string(),
             },
             Exercise {
                 id: "R2".to_string(),
@@ -197,7 +197,7 @@ impl CommandDatabase {
                 context: "Cleaning up code".to_string(),
                 initial_lines: vec!["let mut name = \"Vim\";".to_string()],
                 initial_cursor: (0, 4), // on 'm'
-                expected_lines: Some(vec!["let  name = \"Vim\";".to_string()]),
+                expected_lines: Some(vec!["let name = \"Vim\";".to_string()]),
                 expected_cursor: None,
                 hint: "Use 'dw' to delete a word".to_string(),
                 solution_keys: "dw".to_string(),
@@ -213,7 +213,7 @@ impl CommandDatabase {
                 expected_lines: Some(vec!["let msg = \"Master\";".to_string()]),
                 expected_cursor: None,
                 hint: "Use 'c' with a motion or 'c$'".to_string(),
-                solution_keys: "c$Master\";".to_string(), // Simplified target
+                solution_keys: "c$Master\";\u{1b}".to_string(), 
             },
             Exercise {
                 id: "R4".to_string(),
@@ -226,7 +226,7 @@ impl CommandDatabase {
                 expected_lines: Some(vec!["".to_string()]),
                 expected_cursor: None,
                 hint: "Use 'cc' to change the whole line".to_string(),
-                solution_keys: "cc".to_string(),
+                solution_keys: "cc\u{1b}".to_string(),
             },
         ]
     }
@@ -295,6 +295,31 @@ impl CommandDatabase {
 
     pub fn get_command_by_keybinding(&self, key: &str) -> Option<&Command> {
         self.commands.iter().find(|c| c.keybinding == key)
+    }
+
+    pub fn get_levels(&self) -> Vec<(Level, Vec<Exercise>)> {
+        let levels = vec![
+            Level::Survivor,
+            Level::Sniper,
+            Level::Refactorer,
+            Level::Surgeon,
+            Level::Architect,
+            Level::Wizard,
+        ];
+
+        levels
+            .into_iter()
+            .map(|level| {
+                let exercises = self
+                    .exercises
+                    .iter()
+                    .filter(|e| e.level == level)
+                    .cloned()
+                    .collect();
+                (level, exercises)
+            })
+            .filter(|(_, exercises): &(_, Vec<Exercise>)| !exercises.is_empty())
+            .collect()
     }
 }
 
