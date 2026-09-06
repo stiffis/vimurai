@@ -2386,6 +2386,22 @@ mod tests {
     }
 
     #[test]
+    fn settings_reports_the_resolved_palette_and_detection_source() {
+        let mut app = app();
+        app.no_color = false;
+        app.route = Route::Settings;
+        app.terminal_theme = TerminalTheme::Light;
+        app.theme_source = ThemeSource::Osc11;
+        let screen = draw(&app, 100, 28);
+        assert!(screen.contains("GRUVBOX LIGHT OSC11"));
+
+        app.terminal_theme = TerminalTheme::Dark;
+        app.theme_source = ThemeSource::Environment("VIMURAI_THEME");
+        let screen = draw(&app, 100, 28);
+        assert!(screen.contains("GRUVBOX DARK OVERRIDE"));
+    }
+
+    #[test]
     fn full_cat_appears_only_at_the_large_breakpoint() {
         let mut app = app();
         app.no_color = false;
