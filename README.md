@@ -29,6 +29,28 @@ The interface and lesson content are currently in Spanish.
 The learning philosophy and product decisions are documented in
 [the project vision](docs/VISION.md).
 
+## Screenshots
+
+### Home
+
+Choose a practice mode, check your local profile, and meet Kage.
+
+![Vimurai home screen with practice modes, local progress, and Kage the pixel-art cat](assets/vimurai-home.png)
+
+### Academy
+
+Explore the six belts, review your completed exercises, and read each mission's
+objective before entering the dojo.
+
+![Vimurai Academy with belt progression, exercise ratings, and a mission briefing](assets/vimurai-academy.png)
+
+### Daily Drill
+
+Practice Vim motions in a focused editor with an exercise objective, contextual
+coaching, and live session metrics.
+
+![Vimurai Daily Drill with a Rust navigation exercise, the practice buffer, and Kage's coaching panel](assets/vimurai-daily-drill.png)
+
 ## Getting started
 
 Requirements: Rust 1.88 or newer and a Unicode-capable terminal. `NO_COLOR=1`
