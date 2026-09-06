@@ -1,128 +1,133 @@
 # VIMURAI
 
-> Domina Vim a través de memoria muscular.
+> Master Vim through muscle memory.
 
-Vimurai es un dojo interactivo para terminal construido en Rust con Ratatui.
-Combina un mini‑Vim, retos sobre código realista, una academia por cinturones,
-repetición espaciada SM‑2 y gamificación ligera. Kage, un gato hacker dibujado
-en pixel art de terminal, acompaña la sesión y reacciona a tu forma de resolver
-cada ejercicio.
+Vimurai is an interactive terminal dojo built in Rust with Ratatui. It combines
+a mini Vim editor, realistic coding challenges, a belt-based academy, SM-2
+spaced repetition, and lightweight gamification. Kage, a hacker cat drawn in
+terminal pixel art, accompanies each session and reacts to how you solve each
+exercise.
 
-## Qué incluye
+The interface and lesson content are currently in Spanish.
 
-- **Daily Drill:** una sesión finita de repaso adaptada a lo que estás por
-  olvidar.
-- **Academia:** recorrido progresivo desde `hjkl` hasta gramática de operadores,
-  objetos de texto, búsqueda y navegación estructural, con 29 misiones en seis
-  cinturones.
-- **Sandbox:** buffer libre para practicar con snippets sin arriesgar tu
-  progreso.
-- **Mini‑Vim Unicode:** modos Normal, Insert, Visual, Command y Search; conteos,
-  motions, operadores, registros, undo/redo y búsquedas.
-- **Progreso local:** XP, nivel, racha, precisión, actividad, dominio por comando
-  y logros persistidos en SQLite.
-- **TUI responsiva:** layouts wide/compact, Gruvbox Dark/Light automático,
-  fondo heredado de la terminal, alto contraste y restauración segura incluso
-  ante errores.
+## Features
 
-La filosofía pedagógica y las decisiones de producto están documentadas en
-[docs/VISION.md](docs/VISION.md).
+- **Daily Drill:** a finite review session tailored to the skills that are due
+  for practice.
+- **Academy:** a progressive path from `hjkl` to operator grammar, text objects,
+  search, and structural navigation, with 29 missions across six belts.
+- **Sandbox:** a free practice buffer with sample snippets that lets you
+  experiment without risking your progress.
+- **Unicode mini Vim:** Normal, Insert, Visual, Command, and Search modes;
+  counts, motions, operators, registers, undo/redo, and searches.
+- **Local progress:** XP, level, streak, accuracy, activity, per-command mastery,
+  and achievements stored in SQLite.
+- **Responsive TUI:** wide and compact layouts, automatic Gruvbox Dark/Light,
+  an inherited terminal background, high contrast, and terminal restoration
+  on errors.
 
-## Ejecutar
+The learning philosophy and product decisions are documented in
+[the project vision](docs/VISION.md).
 
-Requisitos: Rust 1.88 o superior y una terminal Unicode. `NO_COLOR=1` y
-`--ascii` ofrecen una presentación monocroma que también hereda los colores
-predeterminados del terminal.
+## Getting started
+
+Requirements: Rust 1.88 or newer and a Unicode-capable terminal. `NO_COLOR=1`
+uses the terminal's default colors throughout the interface. `--ascii`
+replaces Kage's pixel art with a simple ASCII cat.
+
+From the repository root:
 
 ```bash
-cd /home/stiff/vimurai
 cargo run --release
 ```
 
-Para instalar el binario en tu perfil:
+To install the binary in your Cargo bin directory:
 
 ```bash
 cargo install --path .
 vimurai
 ```
 
-### Tema de terminal
+### Terminal theme
 
-Vimurai no pinta un fondo propio: conserva el fondo, transparencia y wallpaper
-configurados en tu terminal. Al arrancar consulta el color predeterminado con
-OSC 11 y selecciona **Gruvbox Dark** o **Gruvbox Light** según su luminancia. La
-consulta espera como máximo 50 ms y conserva cualquier tecla recibida durante
-ese intervalo.
+Vimurai inherits your terminal's background, transparency, and wallpaper. At
+startup, it queries the default background color using OSC 11 and selects
+**Gruvbox Dark** or **Gruvbox Light** based on its luminance. The query waits
+up to 50 ms and preserves any keys received during that interval. Late terminal
+responses are consumed safely without being interpreted as keyboard input.
 
-Si el emulador no responde, usa `COLORFGBG`; el fallback final es Gruvbox Dark.
-Puedes forzar una variante o desactivar la consulta sin cambiar tu progreso:
+If the terminal does not respond, Vimurai checks `TERM_BACKGROUND`,
+`TERMINAL_THEME`, and then `COLORFGBG`. The final fallback is Gruvbox Dark.
+You can force a variant or disable the query without changing your progress:
 
 ```bash
-VIMURAI_THEME=light vimurai   # también acepta dark
-VIMURAI_NO_OSC=1 vimurai      # sólo heurísticas de entorno
+VIMURAI_THEME=light vimurai   # also accepts dark; takes priority over detection
+VIMURAI_NO_OSC=1 vimurai      # use environment hints only
 ```
 
-La detección se repite en cada inicio, así que alternar el perfil claro/oscuro
-de la terminal y volver a abrir Vimurai elige la paleta correspondiente.
+Detection runs on every launch. After switching your terminal between light
+and dark profiles, reopen Vimurai to select the matching palette.
 
-## Controles
+## Controls
 
-Fuera del editor:
+Outside the editor:
 
-| Tecla | Acción |
+| Key | Action |
 |---|---|
-| `j` / `k` o flechas | Mover selección |
-| `h` / `l` | Cambiar panel |
-| `Enter` | Abrir / confirmar |
-| `Esc` | Volver / cerrar overlay |
-| `F1` | Ayuda contextual |
-| `q` | Solicitar salida |
+| `j` / `k` or arrow keys | Move the selection |
+| `h` / `l` | Switch panels |
+| `Enter` | Open / confirm |
+| `Esc` | Go back / close an overlay |
+| `F1` | Contextual help |
+| `q` | Request to quit |
 
-Durante una práctica, las teclas imprimibles se reservan para Vim. Los atajos
-de la aplicación evitan robar motions:
+During practice, printable keys are reserved for Vim. Application shortcuts
+use separate keys so they do not interfere with motions:
 
-| Tecla | Acción |
+| Key | Action |
 |---|---|
-| `F1` | Mostrar una pista contextual |
-| `F2` | Salir de la práctica / volver al mapa |
-| `F3` | Pausar la sesión y consultar progreso |
-| `F5` | Reiniciar el reto (registra el intento) |
-| `F6` | Cambiar snippet en Sandbox |
-| `Ctrl-Q` | Solicitar salida de Vimurai |
-| `:q` | Salir del buffer como en Vim |
+| `F1` | Show a contextual hint |
+| `F2` | Leave practice / return to the map |
+| `F3` | Pause the session and view progress |
+| `F5` | Restart the challenge (records the attempt) |
+| `F6` | Switch snippets in Sandbox |
+| `Ctrl-Q` | Request to quit Vimurai |
+| `:q` | Leave the buffer as in Vim |
 
-El pegado bracketed se admite sólo en Sandbox: una solución copiada nunca puede
-otorgar XP ni alterar la repetición espaciada.
+Bracketed paste is supported only in Sandbox: a copied solution cannot award
+XP or alter spaced repetition.
 
-## Datos y privacidad
+## Data and privacy
 
-Vimurai funciona sin cuentas ni red. El progreso se guarda en el directorio de
-datos local del sistema, normalmente:
+Vimurai works without accounts or network access. Progress is stored in the
+operating system's local data directory, typically on Linux:
 
 ```text
 ~/.local/share/vimurai/progress.db
 ```
 
-Para usar otra ubicación, define `VIMURAI_DATA_DIR`. Esto también facilita
-perfiles portátiles y pruebas herméticas.
+Set `VIMURAI_DATA_DIR` to use another directory. This also makes it easy to keep
+portable profiles and isolate test data.
 
-Las bases del prototipo se migran de forma transaccional. Las equivalencias
-seguras pasan al currículo actual y los registros antiguos restantes quedan
-archivados dentro de la propia SQLite, sin inventar dominio sobre motions no
-practicados.
+Prototype databases are migrated transactionally. Records with safe
+equivalents are mapped to the current curriculum; the remaining legacy
+exercise records are archived in the same SQLite database. Migration does not
+assign mastery to motions that have not been practiced.
 
-## Desarrollo
+## Development
 
 ```bash
-cargo fmt --check
-cargo clippy --all-targets --all-features
-cargo test --all-targets
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-targets --all-features
+cargo doc --no-deps
 ```
 
-El editor es independiente de Ratatui, el currículo es declarativo y los tests
-de persistencia usan SQLite `:memory:`. El guard RAII de terminal restaura raw
-mode, alternate screen, cursor y bracketed paste aun durante un panic.
+The editor is independent of Ratatui, the curriculum is declarative, and
+persistence tests use SQLite `:memory:` databases or temporary database files.
+Terminal cleanup uses RAII and a panic hook to restore raw mode, the alternate
+screen, the cursor, and bracketed paste, including on panic paths.
 
-## Licencia
+## License
 
-[GPL‑2.0‑only](LICENSE), en continuidad con el proyecto Vimurai original.
+[GPL-2.0-only](LICENSE), continuing the original Vimurai project's license.

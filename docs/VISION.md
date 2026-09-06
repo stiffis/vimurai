@@ -1,98 +1,99 @@
-# Vimurai: el dojo de memoria muscular
+# Vimurai: the muscle memory dojo
 
-Vimurai no es una chuleta de comandos con una interfaz bonita. Es un gimnasio
-de práctica deliberada: plantea una tarea concreta sobre código realista,
-captura cómo se resolvió y vuelve a presentar cada habilidad justo cuando
-conviene repasarla.
+Vimurai is a dojo for deliberate practice: it presents a concrete task using
+realistic code, tracks how you solve it, and brings each skill back when it is
+due for review.
 
-Esta visión consolida la investigación y los borradores originales que viven
-en `src_old/local/`. Es la fuente breve de verdad para la implementación
-actual.
+This vision consolidates the project's original research and design drafts
+into a concise reference for the current implementation.
 
-## Los cuatro pilares
+## The four pillars
 
-1. **Práctica auténtica.** Un mini editor Vim funcional permite aprender en el
-   mismo ciclo de modo, movimiento y edición que se transfiere a Vim/Neovim.
-2. **Repetición espaciada.** El Daily Drill crea una cola finita de 3, 5 o 10
-   minutos. SM-2 programa cada concepto a partir de aciertos, errores, pistas y
-   eficiencia; un fallo también es información útil.
-3. **Gamificación ligera.** XP, cinturones, estrellas, racha, actividad y logros
-   sirven de brújula. Nunca convierten el tiempo en una barrera para aprender.
-4. **Progresión con andamiaje.** Cada cinturón introduce pocas ideas y las
-   combina después: movimiento, precisión, gramática, objetos de texto,
-  navegación estructural y reutilización.
+1. **Authentic practice.** A working mini Vim editor teaches the same cycle of
+   modes, motions, and edits that learners can use in Vim or Neovim.
+2. **Spaced repetition.** Daily Drill builds a finite queue for 3, 5, or 10
+   minutes of practice. SM-2 schedules each concept using successes, mistakes,
+   hints, and efficiency; a failed attempt provides useful information too.
+3. **Lightweight gamification.** XP, belts, stars, streaks, activity, and
+   achievements help learners track progress. They never make time a barrier
+   to learning.
+4. **Scaffolded progression.** Each belt introduces a few ideas before combining
+   them: movement, precision, grammar, text objects, structural navigation,
+   and reuse.
 
-## Bucle del alumno
+## The learning loop
 
 ```text
-objetivo realista → intento en mini-Vim → feedback inmediato
-        ↑                                  ↓
- repaso programado ← resultado semántico + reflexión
+realistic goal → attempt in mini Vim → immediate feedback
+      ↑                                      ↓
+scheduled review ← semantic result + reflection
 ```
 
-Se miden acciones semánticas, no caracteres escritos. `12j` es una acción; una
-búsqueda completa también. Una ruta válida pero poco eficiente aprueba y luego
-invita a optimizarse.
+Efficiency is measured in semantic actions: `12j` counts as one action, as does
+a completed search. A valid but inefficient solution passes and then invites
+the learner to improve it.
 
-## Modos del producto
+## Practice modes and supporting views
 
-- **Daily Drill:** revisión personalizada y acotada; primero lo vencido, luego
-  conceptos nuevos desbloqueados y finalmente repaso mixto.
-- **Academia:** campaña por cinturones, sin presión de tiempo y con objetivos,
-  contexto, pista progresiva y solución de referencia.
-- **Sandbox:** editor libre con snippets de Rust, Python y texto/logs; no afecta
-  negativamente al progreso.
-- **Progreso:** nivel, XP, precisión, racha, heatmap, dominio y logros.
-- **Referencia y ajustes:** catálogo buscable y configuración local.
+- **Daily Drill:** personalized, bounded review; due concepts come first,
+  followed by newly unlocked material and then mixed review.
+- **Academy:** a belt-based campaign without time pressure, with objectives,
+  context, progressive hints, and reference solutions.
+- **Sandbox:** a free editor with Rust, Python, and text/log snippets; practice
+  does not penalize progress.
+- **Progress:** level, XP, accuracy, streak, activity heatmap, mastery, and
+  achievements.
+- **Reference and settings:** a searchable command catalog and local
+  configuration.
 
-## Cinturones
+## Belts
 
-| Cinturón | Identidad | Núcleo |
+| Belt | Identity | Focus |
 |---|---|---|
-| Blanco | Survivor | `hjkl`, palabras e inserción segura |
-| Amarillo | Sniper | `fFtT`, bordes de línea y precisión |
-| Naranja | Refactorer | conteos y gramática operador + motion |
-| Rojo | Surgeon | Visual y objetos de texto |
-| Azul | Architect | búsqueda, estructura y saltos largos |
-| Negro | Wizard | registros, pegado y repetición de búsqueda |
+| White | Survivor | `hjkl`, words, and safe insertion |
+| Yellow | Sniper | `fFtT`, line boundaries, and precision |
+| Orange | Refactorer | Counts and operator + motion grammar |
+| Red | Surgeon | Visual mode and text objects |
+| Blue | Architect | Search, structure, and long-distance jumps |
+| Black | Wizard | Registers, paste, and search repetition |
 
-## Reglas de experiencia
+## Interaction principles
 
-- Las teclas imprimibles pertenecen al editor durante una práctica. Ayuda,
-  reinicio y salida usan teclas de función o combinaciones con Ctrl.
-- Kage, el gato-sensei, reacciona al estado pedagógico; no tiene atajos que
-  compitan con motions de Vim.
-- El buffer siempre conserva la mayor parte del espacio. La interfaz reduce u
-  oculta paneles antes de sacrificar el área de práctica.
-- La interfaz hereda el fondo real del emulador y elige Gruvbox Dark o Light a
-  partir de su luminancia; Vimurai nunca impone un lienzo opaco.
-- Una terminal demasiado pequeña muestra una pantalla segura en vez de hacer
-  cálculos de layout que puedan fallar.
-- Coordenadas de texto usan caracteres Unicode coherentemente; nunca se
-  mezclan offsets de bytes con columnas del cursor.
-- Todo el progreso es local. SQLite usa transacciones y los tests trabajan con
-  bases en memoria, nunca con el perfil real.
+- Printable keys belong to the editor during practice. Help, restart, and exit
+  use function keys or Ctrl combinations.
+- Kage, the cat sensei, reacts to learning events. Its behavior requires no
+  shortcuts that compete with Vim motions.
+- The buffer keeps most of the available space. The interface shrinks or hides
+  panels before reducing the practice area.
+- The interface inherits the terminal's actual background and chooses Gruvbox
+  Dark or Light based on its luminance, preserving the terminal's appearance.
+- A terminal that is too small shows a safe resize prompt.
+- Text coordinates consistently use Unicode scalar indices. Byte offsets and
+  cursor columns are never mixed.
+- All progress stays local. SQLite uses transactions, and tests use in-memory
+  or temporary databases rather than a real user profile.
 
-## Arquitectura
+## Architecture
 
 ```text
-entrada terminal
-   ├─ navegación de aplicación → rutas / overlays
-   └─ práctica activa → parser Vim → acción tipada → editor
-                                             ├─ feedback de Kage
-                                             ├─ evaluación del ejercicio
-                                             └─ SM-2 + SQLite
+terminal input
+   ├─ application navigation → routes / overlays
+   └─ active practice → Vim parser → typed action → editor
+                                                 ├─ Kage feedback
+                                                 ├─ exercise evaluation
+                                                 └─ SM-2 + SQLite
 
-estado inmutable para render → componentes Ratatui responsivos
+immutable render state → responsive Ratatui components
 ```
 
-El editor no depende de Ratatui. El currículo es declarativo y validable. La
-persistencia se puede inyectar en memoria. La sesión de terminal usa RAII para
-restaurar raw mode, alternate screen, cursor y bracketed paste incluso ante un
-panic.
+The editor has no dependency on Ratatui. The curriculum is declarative and
+can be validated independently. Persistence can be injected as an in-memory
+store. Terminal cleanup uses RAII and a panic hook to restore raw mode, the
+alternate screen, the cursor, and bracketed paste, including on panic paths.
 
-## Principio de alcance
+## Scope
 
-La versión local prioriza profundidad y corrección en el flujo esencial. Las
-integraciones sociales, nube, IA y plugins siguen siendo posibles extensiones,
-pero no justifican degradar el mini-Vim, el currículo o la privacidad.
+The local application prioritizes depth and correctness in its core learning
+workflow. Social features, cloud services, AI, and plugins remain possible
+extensions, provided they preserve the quality of the mini Vim editor, the
+curriculum, and user privacy.

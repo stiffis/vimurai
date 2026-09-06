@@ -1,15 +1,15 @@
-//! Currículo declarativo de Vimurai.
+//! Vimurai's declarative curriculum.
 //!
-//! Este módulo no conoce la interfaz, SQLite ni el bucle de eventos. Su única
-//! responsabilidad es describir qué se enseña y cómo reconocer el estado final
-//! de un ejercicio. Mantenerlo puro permite validar todo el contenido en tests
-//! sin tocar la configuración o el progreso real del usuario.
+//! This module is independent of the UI, SQLite, and the event loop. It
+//! describes what each exercise teaches and how to recognize its target state.
+//! Keeping it pure lets tests validate all content without touching a user's
+//! settings or saved progress.
 
 use std::collections::{HashMap, HashSet};
 
 use crate::editor::{Mode, Position};
 
-/// Los seis cinturones de la campaña, en orden pedagógico.
+/// The campaign's six belts, in teaching order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum Belt {
@@ -21,7 +21,7 @@ pub enum Belt {
     Wizard = 5,
 }
 
-/// Texto y color semántico que la UI puede presentar para un cinturón.
+/// Display text and semantic color metadata for a belt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BeltMetadata {
     pub order: u8,
@@ -100,10 +100,10 @@ impl Belt {
     }
 }
 
-/// Condición observable de victoria.
+/// An observable exercise completion condition.
 ///
-/// El modo forma parte de todas las metas: completar una edición también exige
-/// volver conscientemente a Normal cuando esa sea la respuesta esperada.
+/// Every goal includes the editor mode: completing an edit also requires
+/// returning to Normal mode when that is part of the expected result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Goal {
     Cursor {
@@ -122,7 +122,7 @@ pub enum Goal {
 }
 
 impl Goal {
-    /// Comprueba la meta directamente contra el estado puro del editor.
+    /// Checks the goal directly against the editor's pure state.
     pub fn is_met(&self, buffer: &[Vec<char>], cursor: Position, mode: Mode) -> bool {
         match self {
             Self::Cursor {
@@ -176,7 +176,7 @@ fn buffer_matches(actual: &[Vec<char>], expected: &[&str]) -> bool {
             })
 }
 
-/// Una práctica autocontenida y estable para persistencia.
+/// A self-contained exercise with a stable identity for persistence.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exercise {
     pub id: &'static str,
@@ -189,14 +189,14 @@ pub struct Exercise {
     pub start: Position,
     pub goal: Goal,
     pub hint: &'static str,
-    /// Secuencia de referencia; `<Esc>`, `<Enter>` y similares son teclas únicas.
+    /// Reference sequence; `<Esc>`, `<Enter>`, and similar tokens are single keys.
     pub solution: &'static str,
-    /// IDs estables del catálogo que este ejercicio entrena.
+    /// Stable catalog IDs for the skills this exercise trains.
     pub skills: &'static [&'static str],
-    /// Atajos que invalidan la intención pedagógica, expresados como IDs o tokens.
+    /// Shortcuts that bypass the learning objective, expressed as IDs or tokens.
     pub forbidden: &'static [&'static str],
     pub estimated_secs: u16,
-    /// Número de eventos de teclado de la solución de referencia.
+    /// Number of keyboard events in the reference solution.
     pub optimal_actions: u16,
 }
 
@@ -224,7 +224,7 @@ pub enum CommandCategory {
     Repeat,
 }
 
-/// Entrada para la ayuda dinámica y para validar `Exercise::skills`.
+/// A catalog entry for dynamic help and validation of `Exercise::skills`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CommandInfo {
     pub id: &'static str,
@@ -253,7 +253,7 @@ const fn command(
     }
 }
 
-/// Catálogo canónico de las funciones que enseña esta primera campaña.
+/// The canonical catalog of commands taught in the initial campaign.
 pub fn command_catalog() -> Vec<CommandInfo> {
     use Belt::*;
     use CommandCategory::*;
@@ -718,7 +718,7 @@ pub fn command_catalog() -> Vec<CommandInfo> {
     ]
 }
 
-/// Los ejercicios se construyen como datos; no realizan E/S ni consultan progreso.
+/// Builds exercises as data, without performing I/O or querying progress.
 pub fn exercises() -> Vec<Exercise> {
     use Belt::*;
 
@@ -1381,10 +1381,10 @@ pub fn exercises_for_belt(belt: Belt) -> Vec<Exercise> {
         .collect()
 }
 
-/// Valida referencias, orden y coordenadas del currículo.
+/// Validates curriculum references, ordering, and coordinates.
 ///
-/// Devuelve todos los errores juntos para que una edición de contenido no se
-/// convierta en un ciclo lento de “arreglar uno y volver a compilar”.
+/// Returns all errors together so content changes can be reviewed without
+/// fixing and recompiling one error at a time.
 pub fn validate_curriculum() -> Result<(), Vec<String>> {
     let commands = command_catalog();
     let lessons = exercises();
@@ -1610,8 +1610,8 @@ mod tests {
 
     #[test]
     fn validation_and_tests_never_need_persistence() {
-        // Este test documenta deliberadamente la frontera: crear, convertir y
-        // validar ejercicios solo opera sobre memoria local.
+        // This test documents the boundary: creating, converting, and
+        // validating exercises only operates on local memory.
         for exercise in exercises() {
             let initial = exercise.initial_buffer();
             assert_eq!(initial.len(), exercise.initial_lines.len());
