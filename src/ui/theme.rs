@@ -66,7 +66,8 @@ impl Theme {
                 } else {
                     Color::Rgb(102, 92, 84) // bg3
                 },
-                mascot_outline: Color::Rgb(40, 40, 40),
+                // Gruvbox bg3: still a dark outline, but visible on bg0.
+                mascot_outline: Color::Rgb(102, 92, 84),
                 mascot_fur: Color::Rgb(250, 189, 47),
                 mascot_highlight: Color::Rgb(251, 241, 199),
                 mascot_shade: Color::Rgb(254, 128, 25),
