@@ -1,17 +1,22 @@
-//! Fast, best-effort terminal background detection.
+//! Persistent terminal input and best-effort background detection.
 //!
-//! [`detect`] should be called after the terminal has entered raw mode and
-//! before Crossterm's global event reader is used for the first time. In that
-//! window Vimurai can ask for the default background with OSC 11 without
-//! letting Crossterm mistake the reply for keyboard input.
+//! Create [`TerminalInput`] before entering raw mode, then call
+//! [`TerminalInput::detect_theme`] after the terminal session is active. The
+//! same value remains the application's only input source for its whole
+//! lifetime. This is important because an OSC 11 reply can arrive after the
+//! startup timeout: Termina will still parse and discard that protocol reply
+//! instead of exposing its bytes as fake key presses.
 //!
-//! The probe has a short, bounded timeout. Real keyboard, paste, mouse, focus,
-//! and resize events observed while waiting are returned in
-//! [`ThemeDetection::pending_events`] and must be dispatched before reading the
-//! next Crossterm event. If a probe cannot be made, environment hints are used
-//! and the final safe fallback is [`TerminalTheme::Dark`].
+//! Real keyboard, paste, mouse, focus, and resize events observed during the
+//! probe are queued and returned in FIFO order by [`TerminalInput::next_event`].
+//! CSI, OSC, and DCS protocol messages are consumed internally.
 
-use std::{env, io::Write as _, time::Duration};
+use std::{
+    collections::VecDeque,
+    env,
+    io::{self, Write as _},
+    time::{Duration, Instant},
+};
 
 use crossterm::event::{
     Event as CrosstermEvent, KeyCode as CrosstermKeyCode, KeyEvent as CrosstermKeyEvent,
@@ -39,9 +44,6 @@ const MAX_PROBE_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// The luminance where black and white have equal WCAG contrast.
 const LIGHT_BACKGROUND_LUMINANCE: f64 = 0.179_128_784_747_792;
-
-/// Upper bound that keeps draining pending input from becoming unbounded.
-const MAX_PENDING_EVENTS: usize = 1_024;
 
 /// Gruvbox variant matching the terminal's default background.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -81,75 +83,179 @@ pub enum ThemeSource {
     Default,
 }
 
-/// Theme selection plus diagnostics and input captured during the OSC query.
-#[derive(Debug, Clone)]
+/// Theme selection plus detection diagnostics.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct ThemeDetection {
     pub theme: TerminalTheme,
     pub source: ThemeSource,
     /// Present when OSC 11 returned the actual default terminal background.
     pub background: Option<Rgb>,
-    /// Dispatch these before calling `crossterm::event::poll` or `read`.
-    pub pending_events: Vec<CrosstermEvent>,
 }
 
-impl Default for ThemeDetection {
-    fn default() -> Self {
-        Self {
-            theme: TerminalTheme::Dark,
-            source: ThemeSource::Default,
+/// Owns the terminal parser for detection and the complete application loop.
+///
+/// Construct this before [`crate::tui::TerminalSession`] so Termina captures
+/// the original cooked terminal state. Do not also use Crossterm's global
+/// `event::poll`/`event::read`; competing readers would race for the same byte
+/// stream.
+#[derive(Debug)]
+pub struct TerminalInput {
+    terminal: PlatformTerminal,
+    pending: VecDeque<CrosstermEvent>,
+}
+
+impl TerminalInput {
+    /// Opens the process terminal without changing its mode.
+    pub fn new() -> io::Result<Self> {
+        Ok(Self {
+            terminal: PlatformTerminal::new()?,
+            pending: VecDeque::new(),
+        })
+    }
+
+    /// Detects the terminal theme with a 50 ms OSC 11 budget.
+    ///
+    /// Terminal I/O failures simply move to the next heuristic. Call this only
+    /// after raw mode is active so a reply is available without a newline.
+    pub fn detect_theme(&mut self) -> ThemeDetection {
+        self.detect_theme_with_timeout(DEFAULT_PROBE_TIMEOUT)
+    }
+
+    /// Detects the theme with a caller-supplied, bounded OSC 11 budget.
+    ///
+    /// Values above 100 ms are capped. A zero timeout disables the query.
+    pub fn detect_theme_with_timeout(&mut self, timeout: Duration) -> ThemeDetection {
+        if let Some((theme, variable)) = explicit_environment_override(env_value) {
+            return ThemeDetection {
+                theme,
+                source: ThemeSource::Environment(variable),
+                background: None,
+            };
+        }
+
+        let environment_fallback = fallback_environment_hint(env_value);
+        let timeout = timeout.min(MAX_PROBE_TIMEOUT);
+        let background = if !timeout.is_zero() && osc_probe_is_safe(env_value) {
+            self.query_osc11(timeout)
+        } else {
+            None
+        };
+
+        if let Some(background) = background {
+            return ThemeDetection {
+                theme: theme_for_rgb(background),
+                source: ThemeSource::Osc11,
+                background: Some(background),
+            };
+        }
+
+        let (theme, source) =
+            environment_fallback.unwrap_or((TerminalTheme::Dark, ThemeSource::Default));
+
+        ThemeDetection {
+            theme,
+            source,
             background: None,
-            pending_events: Vec::new(),
+        }
+    }
+
+    /// Returns the next real input event within `timeout`.
+    ///
+    /// Protocol responses are consumed and ignored, including OSC 11 replies
+    /// that arrive after theme detection timed out.
+    pub fn next_event(&mut self, timeout: Duration) -> io::Result<Option<CrosstermEvent>> {
+        if let Some(event) = self.pending.pop_front() {
+            return Ok(Some(event));
+        }
+
+        let budget = PollBudget::new(timeout);
+        loop {
+            let available = match self.terminal.poll(|_| true, Some(budget.remaining())) {
+                Ok(available) => available,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => {
+                    if budget.expired() {
+                        return Ok(None);
+                    }
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
+            if !available {
+                return Ok(None);
+            }
+
+            let event = self.terminal.read(|_| true)?;
+            if let Some(event) = to_crossterm_event(event) {
+                return Ok(Some(event));
+            }
+            if budget.expired() {
+                return Ok(None);
+            }
+        }
+    }
+
+    fn query_osc11(&mut self, timeout: Duration) -> Option<Rgb> {
+        write!(
+            self.terminal,
+            "{}",
+            Osc::ChangeDynamicColors(
+                DynamicColorNumber::TextBackgroundColor,
+                vec![ColorOrQuery::Query]
+            )
+        )
+        .and_then(|()| self.terminal.flush())
+        .ok()?;
+
+        let budget = PollBudget::new(timeout);
+        loop {
+            let available = match self.terminal.poll(|_| true, Some(budget.remaining())) {
+                Ok(available) => available,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => {
+                    if budget.expired() {
+                        return None;
+                    }
+                    continue;
+                }
+                Err(_) => return None,
+            };
+            if !available {
+                return None;
+            }
+
+            let event = self.terminal.read(|_| true).ok()?;
+            if let Some(background) = background_from_termina_event(&event) {
+                return Some(background);
+            }
+            if let Some(event) = to_crossterm_event(event) {
+                self.pending.push_back(event);
+            }
+            if budget.expired() {
+                return None;
+            }
         }
     }
 }
 
-/// Detects the terminal theme with a 50 ms OSC 11 budget.
-///
-/// This function is infallible by design: terminal I/O failures simply move to
-/// the next heuristic. See the module documentation for the required startup
-/// ordering and how to replay [`ThemeDetection::pending_events`].
-pub fn detect() -> ThemeDetection {
-    detect_with_timeout(DEFAULT_PROBE_TIMEOUT)
+#[derive(Debug, Clone, Copy)]
+struct PollBudget {
+    started: Instant,
+    timeout: Duration,
 }
 
-/// Detects the terminal theme with a caller-supplied, bounded OSC 11 budget.
-///
-/// Values above 100 ms are capped so an optional terminal capability can never
-/// make startup feel stuck. A zero timeout disables the OSC probe.
-pub fn detect_with_timeout(timeout: Duration) -> ThemeDetection {
-    if let Some((theme, variable)) = explicit_environment_override(env_value) {
-        return ThemeDetection {
-            theme,
-            source: ThemeSource::Environment(variable),
-            ..ThemeDetection::default()
-        };
+impl PollBudget {
+    fn new(timeout: Duration) -> Self {
+        Self {
+            started: Instant::now(),
+            timeout,
+        }
     }
 
-    let environment_fallback = fallback_environment_hint(env_value);
-    let timeout = timeout.min(MAX_PROBE_TIMEOUT);
-    let (background, pending_events) = if !timeout.is_zero() && osc_probe_is_safe(env_value) {
-        query_osc11(timeout)
-    } else {
-        (None, Vec::new())
-    };
-
-    if let Some(background) = background {
-        return ThemeDetection {
-            theme: theme_for_rgb(background),
-            source: ThemeSource::Osc11,
-            background: Some(background),
-            pending_events,
-        };
+    fn remaining(self) -> Duration {
+        self.timeout.saturating_sub(self.started.elapsed())
     }
 
-    let (theme, source) =
-        environment_fallback.unwrap_or((TerminalTheme::Dark, ThemeSource::Default));
-
-    ThemeDetection {
-        theme,
-        source,
-        background: None,
-        pending_events,
+    fn expired(self) -> bool {
+        self.started.elapsed() >= self.timeout
     }
 }
 
@@ -291,38 +397,6 @@ where
     })
 }
 
-fn query_osc11(timeout: Duration) -> (Option<Rgb>, Vec<CrosstermEvent>) {
-    let Ok(mut terminal) = PlatformTerminal::new() else {
-        return (None, Vec::new());
-    };
-    let query_result = write!(
-        terminal,
-        "{}",
-        Osc::ChangeDynamicColors(
-            DynamicColorNumber::TextBackgroundColor,
-            vec![ColorOrQuery::Query]
-        )
-    )
-    .and_then(|()| terminal.flush());
-    if query_result.is_err() {
-        return (None, drain_pending_events(&terminal));
-    }
-
-    let background = match terminal.poll(is_background_response, Some(timeout)) {
-        Ok(true) => terminal
-            .read(is_background_response)
-            .ok()
-            .and_then(|response| background_from_termina_event(&response)),
-        Ok(false) | Err(_) => None,
-    };
-    let pending = drain_pending_events(&terminal);
-    (background, pending)
-}
-
-fn is_background_response(event: &TerminaEvent) -> bool {
-    background_from_termina_event(event).is_some()
-}
-
 fn background_from_termina_event(event: &TerminaEvent) -> Option<Rgb> {
     let TerminaEvent::Osc(Osc::ChangeDynamicColors(
         DynamicColorNumber::TextBackgroundColor,
@@ -336,24 +410,6 @@ fn background_from_termina_event(event: &TerminaEvent) -> Option<Rgb> {
         ColorOrQuery::Color(color) => Some(Rgb::new(color.red, color.green, color.blue)),
         ColorOrQuery::Query => None,
     })
-}
-
-fn drain_pending_events(terminal: &PlatformTerminal) -> Vec<CrosstermEvent> {
-    let mut pending = Vec::new();
-    let mut drained = 0;
-    while drained < MAX_PENDING_EVENTS {
-        let Ok(true) = terminal.poll(|_| true, Some(Duration::ZERO)) else {
-            break;
-        };
-        let Ok(event) = terminal.read(|_| true) else {
-            break;
-        };
-        drained += 1;
-        if let Some(event) = to_crossterm_event(event) {
-            pending.push(event);
-        }
-    }
-    pending
 }
 
 fn to_crossterm_event(event: TerminaEvent) -> Option<CrosstermEvent> {
@@ -710,6 +766,29 @@ mod tests {
         assert_eq!(
             background_from_termina_event(&response),
             Some(Rgb::new(0x28, 0x28, 0x28))
+        );
+    }
+
+    #[test]
+    fn late_osc_reply_is_ignored_and_real_keys_stay_fifo() {
+        let mut parser = Parser::default();
+        parser.parse(b"a\x1b]11;rgb:fbfb/f1f1/c7c7\x1b\\b", false);
+
+        let events: Vec<_> = std::iter::from_fn(|| parser.pop())
+            .filter_map(to_crossterm_event)
+            .collect();
+        assert_eq!(
+            events,
+            vec![
+                CrosstermEvent::Key(CrosstermKeyEvent::new(
+                    KeyCode::Char('a'),
+                    KeyModifiers::NONE,
+                )),
+                CrosstermEvent::Key(CrosstermKeyEvent::new(
+                    KeyCode::Char('b'),
+                    KeyModifiers::NONE,
+                )),
+            ]
         );
     }
 }

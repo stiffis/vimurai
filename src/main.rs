@@ -1,15 +1,14 @@
 use std::{
-    collections::VecDeque,
     env,
     error::Error,
     process::ExitCode,
     time::{Duration, Instant},
 };
 
-use crossterm::event::{self, Event};
+use crossterm::event::Event;
 use vimurai::{
     app::{App, AppOptions},
-    terminal_appearance,
+    terminal_appearance::TerminalInput,
     tui::TerminalSession,
     ui,
 };
@@ -42,9 +41,11 @@ fn run() -> Result<(), Box<dyn Error>> {
     let ParseResult::Run(cli) = parse_args()? else {
         return Ok(());
     };
+    // Open Termina while the shell is still cooked. It remains the sole input
+    // reader, including after the bounded OSC 11 detection window.
+    let mut input = TerminalInput::new()?;
     let mut terminal = TerminalSession::new()?;
-    let detection = terminal_appearance::detect();
-    let mut pending_events: VecDeque<Event> = detection.pending_events.into();
+    let detection = input.detect_theme();
     let mut app = App::new(AppOptions {
         skip_boot: cli.skip_boot,
         force_ascii: cli.ascii,
@@ -60,13 +61,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         terminal.draw(|frame| ui::render(frame, &app))?;
 
         let timeout = next_tick.saturating_duration_since(Instant::now());
-        let next_event = if let Some(event) = pending_events.pop_front() {
-            Some(event)
-        } else if event::poll(timeout)? {
-            Some(event::read()?)
-        } else {
-            None
-        };
+        let next_event = input.next_event(timeout)?;
         if let Some(event) = next_event {
             match event {
                 Event::Key(key) => app.handle_key(key),
@@ -89,7 +84,10 @@ fn run() -> Result<(), Box<dyn Error>> {
         }
     }
 
+    // Guards unwind in reverse construction order: Crossterm first leaves its
+    // modes, then Termina restores the shell state it captured before startup.
     terminal.restore()?;
+    drop(input);
     if let Some(warning) = app.shutdown_warning.as_deref() {
         eprintln!("vimurai: no se pudo guardar toda la sesión: {warning}");
     }
